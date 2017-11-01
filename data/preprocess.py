@@ -1,5 +1,3 @@
-import numpy as np
-import pandas as pd
 from sklearn import preprocessing
 
 
@@ -11,16 +9,15 @@ class Preprocessor:
         else:
             self.normalizer = None
 
-    def detect_null(self):
-        pass
-
-    def interpolate(self, method):
-        pass
+    # def detect_null(self):
+    #     pass
+    #
+    # def interpolate(self, data, method):
+    #     data.interpolate(method=method)
 
     def fit(self, data):
         self.normalizer = self.scale.fit(data)
         pass
 
-    def normalize(self, input):
-        pass
-
+    def normalize(self, data):
+        return self.normalizer.transform(data)
