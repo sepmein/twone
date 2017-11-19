@@ -26,9 +26,13 @@ class Container:
         # take control over randomness
         self.__random_seed__ = random.seed(a=10)
 
+        # init feature data and target data
+        self.__feature_data__ = None
+        self.__target_data__ = None
+
     def detect_null(self):
         """
-
+        detect any null data in the data_frame
         :return:
         """
         # TODO: To make this fn fitting to different ranks
@@ -100,11 +104,37 @@ class Container:
 
     def normalize(self, data):
         """
-
+        Normalized data using predefined scale
+        should always normalized feature data, not target data
         :param data:
         :return:
         """
         return self.normalizer.transform(data)
+
+    def compute_feature_data(self, shuffle=False):
+        """
+        compute feature data based on feature tags
+        :return:
+        """
+        if self.feature_tags is None:
+            raise Exception('Feature tags not set, can\'t get feature data')
+        result = self.data[self.feature_tags]
+        # fit and transform feature data
+        self.fit(result)
+        normalized_array = self.normalize(result)
+        constructed_df = pd.DataFrame(normalized_array, columns=self.feature_tags)
+        self.__feature_data__ = constructed_df
+        return self
+
+    def compute_target_data(self):
+        """
+        compute target data based on target tags
+        :return: self
+        """
+        if self.target_tags is None:
+            raise Exception('Target tags not set, can\'t get target data')
+        self.__target_data__ = self.data[self.target_tags]
+        return self
 
 
 class DNNContainer(Container):
@@ -254,3 +284,17 @@ class RNNContainer(Container):
         :param data_frame:
         """
         Container.__init__(self, data_frame)
+
+    def get_max_time(self):
+        return self.data.shape[0]
+
+    def get_feature_data(self, batch=1):
+        """
+        reshape feature data into ( batch, max_time, num_feature ) for tf.nn.dynamic_rnn function
+        check tensorflow documentations for explanation
+        current version is 1.4
+        :param batch:
+        :return:
+        """
+        return np.reshape(self.__feature_data__.values,
+                          (batch, int(self.get_max_time() / batch), len(self.feature_tags)))

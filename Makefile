@@ -8,3 +8,6 @@ rebuild:
 
 publish:
 	twine upload dist/*
+
+test:
+    python -m unittest test/*
