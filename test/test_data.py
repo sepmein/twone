@@ -1,14 +1,17 @@
 import unittest
 
-from data.__main__ import Data
+import pandas as pd
+
+from twone.container import Container
 
 
 class ClassDataTestCase(unittest.TestCase):
-    """Test for data/__main__.py"""
+    """Test for data/data.py"""
 
     def test_instantiate(self):
-        data = Data()
-        self.assertIsInstance(data, Data)
+        weather_death_data = pd.read_csv('../interpolated_data.csv')
+        data = Container(data_frame=weather_death_data)
+        self.assertIsInstance(data, Container)
 
     def test_test(self):
         self.assertTrue(True)
