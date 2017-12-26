@@ -46,14 +46,16 @@ class Container:
         self.data = self.__data__
         return self
 
-    def interpolate(self, data, method=None):
+    def interpolate(self, data=None, method=None):
         """
-
+        interpolate
         :param data:
         :param method:
         :return:
         """
         self.__data__ = self.data
+        if data is None:
+            data = self.data
         self.data = data.interpolate(method=method)
         return self
 

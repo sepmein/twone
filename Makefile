@@ -1,6 +1,6 @@
 clean:
 	rm -r dist
-	rm -r hulihutu.egg-info
+	rm -r twone.egg-info
 
 rebuild:
 	python setup.py sdist
