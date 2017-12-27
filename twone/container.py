@@ -11,7 +11,10 @@ class Container:
     """
 
     def __init__(self,
-                 data_frame):
+                 data_frame,
+                 training_set_split_ratio=0.7,
+                 cross_validation_set_split_ratio=0.2,
+                 test_set_split_ratio=0.1):
         """
 
         :param data_frame:
@@ -29,6 +32,11 @@ class Container:
         # init feature data and target data
         self.__feature_data__ = None
         self.__target_data__ = None
+
+        # create train/cv/test dataSet
+        self.training_set_split_ratio = training_set_split_ratio
+        self.cross_validation_set_split_ratio = cross_validation_set_split_ratio
+        self.test_set_split_ratio = test_set_split_ratio
 
     def detect_null(self):
         """
@@ -145,28 +153,17 @@ class DNNContainer(Container):
     """
 
     def __init__(self,
-                 data_frame,
-                 training_set_split_ratio=0.7,
-                 cross_validation_set_split_ratio=0.2,
-                 test_set_split_ratio=0.1):
+                 data_frame):
         """
 
         :param data_frame:
-        :param training_set_split_ratio:
-        :param cross_validation_set_split_ratio:
-        :param test_set_split_ratio:
         """
         Container.__init__(self, data_frame)
 
         # create train/cv/test dataSet
-        self.training_set_split_ratio = training_set_split_ratio
-        self.cross_validation_set_split_ratio = cross_validation_set_split_ratio
-        self.test_set_split_ratio = test_set_split_ratio
         self.__training_set_mask__ = None
         self.__cross_validation_set_mask__ = None
         self.__test_set_mask__ = None
-        self.__feature_data__ = None
-        self.__target_data__ = None
 
     def gen_mask(self, days=0):
         # define pseudo mask for generating class
@@ -290,7 +287,7 @@ class RNNContainer(Container):
     def get_max_time(self):
         return self.data.shape[0]
 
-    def get_feature_data(self, batch=1):
+    def compute_feature_data(self, batch=1):
         """
         reshape feature data into ( batch, max_time, num_feature ) for tf.nn.dynamic_rnn function
         check tensorflow documentations for explanation
@@ -298,5 +295,71 @@ class RNNContainer(Container):
         :param batch:
         :return:
         """
-        return np.reshape(self.__feature_data__.values,
-                          (batch, int(self.get_max_time() / batch), len(self.feature_tags)))
+        if self.feature_tags is None:
+            raise Exception('Feature tags not set, can\'t get feature data')
+        result = self.data[self.feature_tags]
+        # fit and transform feature data
+        self.fit(result)
+        normalized_array = self.normalize(result)
+        constructed_df = pd.DataFrame(normalized_array, columns=self.feature_tags)
+        self.__feature_data__ = constructed_df
+        self.__feature_data__ = np.reshape(self.__feature_data__.values,
+                                           (batch, int(self.get_max_time() / batch), len(self.feature_tags)))
+        return self
+
+    def compute_target_data(self, batch=1, roll=1):
+        """
+
+        :param batch:
+        :param roll: how much will the target roll back, default value is 1. 如果值是1的话，那么模型就预测明天的数据，如果是2的
+        话就预测后天的数据，以此类推。
+        :return:
+        """
+        if self.target_tags is None:
+            raise Exception('Target tags not set, can\'t get target data')
+        target_data = np.roll(self.data[self.target_tags].valuees, -1 * roll)
+        self.__target_data__ = np.reshape(target_data,
+                                          (batch, int(self.get_max_time() / batch), len(self.target_tags)))
+        return self
+
+    def get_training_features(self):
+
+        """
+
+        :return:
+        """
+
+    def get_training_targets(self):
+
+        """
+
+        :return:
+        """
+
+    def get_cross_validation_features(self):
+
+        """
+
+        :return:
+        """
+
+    def get_cross_validation_targets(self):
+
+        """
+
+        :return:
+        """
+
+    def get_test_features(self):
+
+        """
+
+        :return:
+        """
+
+    def get_test_targets(self):
+
+        """
+
+        :return:
+        """
