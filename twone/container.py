@@ -274,6 +274,65 @@ class DNNContainer(Container):
 class RNNContainer(Container):
     """
         A container generates and pre-process recurrent data
+        The container should reshape data into the shape of (batch size, times steps, feature length), one of these unit
+        is one epoch. Container should iteratively output lots of epochs.
+
+        The length of the total sequence data is total_length. It should be spliced to lots of batches.
+        e.g.:
+
+        From:
+        | <-                                       total-length                                                    -> |
+        ---------------------------------------------------------------------------------------------------------------
+
+        To:
+        |        batches      |
+        -----------------------
+        -----------------------
+
+                ........
+        -----------------------                 num_batches
+        -----------------------
+        -----------------------
+        -----------------------
+        -----------------------
+
+        After above procedure, above data should be spliced to different epoches.
+
+        From:
+        |        batches      |
+        -----------------------
+        -----------------------
+
+                ........
+        -----------------------
+        -----------------------
+        -----------------------
+        -----------------------
+        -----------------------
+
+        To:
+        | ep1 | | ep2 | | ep3 |  ...   | epn |
+        ------- ------- ------         -------
+        ------- ------- ------         -------
+
+                    .............
+        ------- ------- ------         -------
+        ------- ------- ------         -------
+        ------- ------- ------         -------
+        ------- ------- ------         -------
+        ------- ------- ------         -------
+
+        Look at just one epoch:
+
+        | epi |    | num of time steps = 7 |
+        -------    -   -   -   -   -   -   -
+                   1   2   3   4   5   6   7
+
+        The num_steps of max_time value is one hyper-parameter that should been tuned.
+        In theory, the gradient of recurrent neural network could flow back to a **really** long distance. But in pract-
+        ice, the back propagation through time(BPTT) algorithm can't flow back too long due to the calculation resources.
+        So Truncated back propagation through time is normally used in practice.
+
     """
 
     def __init__(self,
