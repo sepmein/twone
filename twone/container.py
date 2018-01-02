@@ -359,7 +359,7 @@ class RNNContainer(Container):
         self.__test_targets__ = None
 
     @property
-    def _num_features(self):
+    def num_features(self):
         """
 
         :return: type Int, number of features of target
@@ -370,7 +370,7 @@ class RNNContainer(Container):
             return len(self.feature_tags)
 
     @property
-    def _num_targets(self):
+    def num_targets(self):
         """
 
         :return: type Int, number of features of target
@@ -422,10 +422,10 @@ class RNNContainer(Container):
         dim_0 = batch
         dim_1 = batch_partition_size = self._total_length // batch
         # reshape features
-        features_reshaped_by_batch = np.reshape(normalized_array, [dim_0, dim_1, self._num_features])
+        features_reshaped_by_batch = np.reshape(normalized_array, [dim_0, dim_1, self.num_features])
         # reshape targets
         targets_array = self.__data__[self.target_tags].values
-        targets_reshaped_by_batch = np.reshape(targets_array, [dim_0, dim_1, self._num_targets])
+        targets_reshaped_by_batch = np.reshape(targets_array, [dim_0, dim_1, self.num_targets])
         # calculate epochs
         epochs = batch_partition_size // time_steps
         # print epoch length for debug
