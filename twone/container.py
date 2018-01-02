@@ -17,7 +17,7 @@ class Container:
                  test_set_split_ratio=0.1):
         """
 
-        :param data_frame:
+        :param data_frame: pandas data frame object
         """
         self.data = data_frame
         self.__data__ = data_frame
@@ -75,6 +75,14 @@ class Container:
         """
         self.feature_tags = feature_tags
         return self
+
+    def append_feature_tags(self, feature_tags):
+        """
+        append 'feature-tags' to self.feature_tags
+        :param feature_tags:
+        :return:
+        """
+        self.feature_tags.append(feature_tags)
 
     def set_target_tags(self, target_tags):
         """
@@ -170,9 +178,8 @@ class DNNContainer(Container):
         mask = np.random.rand(len(self.data) - days)
         self.__training_set_mask__ = mask <= self.training_set_split_ratio
         self.__cross_validation_set_mask__ = (mask > self.training_set_split_ratio) & \
-                                             (
-                                                 mask < (
-                                                     self.training_set_split_ratio + self.cross_validation_set_split_ratio))
+                                             (mask < (self.training_set_split_ratio
+                                                      + self.cross_validation_set_split_ratio))
         self.__test_set_mask__ = mask >= (self.training_set_split_ratio + self.cross_validation_set_split_ratio)
 
     def compute_feature_data(self, shuffle=False):
@@ -273,7 +280,7 @@ class DNNContainer(Container):
 
 class RNNContainer(Container):
     """
-        A container generates and pre-process recurrent data
+        A container pre-process recurrent data, and generate the data conform to Tensorflow style.
         The container should reshape data into the shape of (batch size, times steps, feature length), one of these unit
         is one epoch. Container should iteratively output lots of epochs.
 
@@ -332,7 +339,6 @@ class RNNContainer(Container):
         In theory, the gradient of recurrent neural network could flow back to a **really** long distance. But in pract-
         ice, the back propagation through time(BPTT) algorithm can't flow back too long due to the calculation resources.
         So Truncated back propagation through time is normally used in practice.
-
     """
 
     def __init__(self,
@@ -342,43 +348,136 @@ class RNNContainer(Container):
         :param data_frame:
         """
         Container.__init__(self, data_frame)
+        self._total_length = self.__data__.shape[0]
 
-    def get_max_time(self):
-        return self.data.shape[0]
+        # training, cv and test data
+        self.__training_features__ = None
+        self.__training_targets__ = None
+        self.__cv_features__ = None
+        self.__cv_targets__ = None
+        self.__test_features__ = None
+        self.__test_targets__ = None
 
-    def compute_feature_data(self, batch=1):
+    @property
+    def _num_features(self):
         """
-        reshape feature data into ( batch, max_time, num_feature ) for tf.nn.dynamic_rnn function
+
+        :return: type Int, number of features of target
+        """
+        if self.feature_tags is None:
+            return None
+        else:
+            return len(self.feature_tags)
+
+    @property
+    def _num_targets(self):
+        """
+
+        :return: type Int, number of features of target
+        """
+        if self.target_tags is None:
+            return None
+        else:
+            return len(self.target_tags)
+
+    def set_target_tags(self, target_tags, shift=-1):
+        """
+        set target tags fn for rnn model.
+        accept target_tags as a string of list, and a single shift value which indicates how much steps feature data
+        will shift.
+        :param target_tags: list.
+        :param shift: int
+        :return: self
+        """
+        true_target_tags = [tag + '_target' for tag in target_tags]
+        # copy the target column to targetName + '_target' column, so that the original target tag could be used
+        # as an feature
+        self.__data__.assign({target_tag + '_target': self.__data__[target_tag]} for target_tag in target_tags)
+        # for every target_tag in target_tags, shift back by "shift" parameter
+        for tag in true_target_tags:
+            self.__data__[tag] = self.__data__[tag].shift(shift)
+        # For seq labeling problem, remove the row that included with NAN results
+        self.__data__ = self.__data__[0:shift]
+        # set target tags and feature tags
+        # because target tags could be used as feature tags
+        self.append_feature_tags(target_tags)
+        self.feature_tags = target_tags
+
+    def gen_batch(self, batch=5, time_steps=128):
+        """
+        reshape feature data into (batch, max_time, num_features) for tf.nn.dynamic_rnn function
         check tensorflow documentations for explanation
         current version is 1.4
         :param batch:
+        :param time_steps:
         :return:
         """
         if self.feature_tags is None:
             raise Exception('Feature tags not set, can\'t get feature data')
-        result = self.data[self.feature_tags]
+        features = self.data[self.feature_tags]
         # fit and transform feature data
-        self.fit(result)
-        normalized_array = self.normalize(result)
-        constructed_df = pd.DataFrame(normalized_array, columns=self.feature_tags)
-        self.__feature_data__ = constructed_df
-        self.__feature_data__ = np.reshape(self.__feature_data__.values,
-                                           (batch, int(self.get_max_time() / batch), len(self.feature_tags)))
-        return self
+        self.fit(features)
+        normalized_array = self.normalize(features)
+        # calculate dims for reshape
+        dim_0 = batch
+        dim_1 = batch_partition_size = self._total_length // batch
+        # reshape features
+        features_reshaped_by_batch = np.reshape(normalized_array, [dim_0, dim_1, self._num_features])
+        # reshape targets
+        targets_array = self.__data__[self.target_tags].values
+        targets_reshaped_by_batch = np.reshape(targets_array, [dim_0, dim_1, self._num_targets])
+        # calculate epochs
+        epochs = batch_partition_size // time_steps
+        # print epoch length for debug
+        # TODO: remove it later
+        print(epochs)
 
-    def compute_target_data(self, batch=1, roll=1):
-        """
+        # compute test data length
+        test_data_length = epochs * self.test_set_split_ratio
+        if test_data_length <= 1:
+            test_data_length = 1
+        else:
+            test_data_length = round(test_data_length)
 
-        :param batch:
-        :param roll: how much will the target roll back, default value is 1. 如果值是1的话，那么模型就预测明天的数据，如果是2的
-        话就预测后天的数据，以此类推。
-        :return:
-        """
-        if self.target_tags is None:
-            raise Exception('Target tags not set, can\'t get target data')
-        target_data = np.roll(self.data[self.target_tags].valuees, -1 * roll)
-        self.__target_data__ = np.reshape(target_data,
-                                          (batch, int(self.get_max_time() / batch), len(self.target_tags)))
+        # compute cross validation data length
+        cv_data_length = epochs * self.cross_validation_set_split_ratio
+        if cv_data_length <= 1:
+            cv_data_length = 1
+        else:
+            cv_data_length = round(cv_data_length)
+
+        # compute training data length by epochs, cv_data_length and test_data_length
+        training_data_length = epochs - cv_data_length - test_data_length
+
+        if training_data_length < 1:
+            raise Exception('[twone Exception]: rnn.gen_batch | training data epoch is less than 1, please consider' +
+                            'lower down the batch size or increase total data length')
+
+        training_features = []
+        training_targets = []
+        cv_features = []
+        cv_targets = []
+        test_features = []
+        test_targets = []
+        for i in range(epochs):
+            current_feature = features_reshaped_by_batch[:, time_steps * i: time_steps * (i + 1):]
+            current_target = targets_reshaped_by_batch[:, time_steps * i: time_steps * (i + 1):]
+            if i < training_data_length:
+                training_features.append(current_feature)
+                training_targets.append(current_target)
+            elif i < training_data_length + cv_data_length:
+                cv_features.append(current_feature)
+                cv_targets.append(current_target)
+            else:
+                test_features.append(current_feature)
+                test_targets.append(current_target)
+
+        self.__training_features__ = training_features
+        self.__training_targets__ = training_targets
+        self.__cv_features__ = cv_features
+        self.__cv_targets__ = cv_targets
+        self.__test_features__ = test_features
+        self.__test_targets__ = test_targets
         return self
 
     def get_training_features(self):
@@ -387,6 +486,8 @@ class RNNContainer(Container):
 
         :return:
         """
+        for feature in self.__training_targets__:
+            yield feature
 
     def get_training_targets(self):
 
@@ -394,6 +495,8 @@ class RNNContainer(Container):
 
         :return:
         """
+        for target in self.__training_targets__:
+            yield target
 
     def get_cross_validation_features(self):
 
@@ -401,6 +504,8 @@ class RNNContainer(Container):
 
         :return:
         """
+        for feature in self.__cv_targets__:
+            yield feature
 
     def get_cross_validation_targets(self):
 
@@ -408,6 +513,8 @@ class RNNContainer(Container):
 
         :return:
         """
+        for target in self.__cv_targets__:
+            yield target
 
     def get_test_features(self):
 
@@ -415,6 +522,8 @@ class RNNContainer(Container):
 
         :return:
         """
+        for feature in self.__test_features__:
+            yield feature
 
     def get_test_targets(self):
 
@@ -422,3 +531,5 @@ class RNNContainer(Container):
 
         :return:
         """
+        for target in self.__test_targets__:
+            yield target
