@@ -402,6 +402,7 @@ class RNNContainer(Container):
         # because target tags could be used as feature tags
         self.append_feature_tags(target_tags)
         self.feature_tags = target_tags
+        return self
 
     def gen_batch(self, batch=5, time_steps=128):
         """
