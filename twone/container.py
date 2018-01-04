@@ -389,7 +389,10 @@ class RNNContainer(Container):
         true_target_tags = [tag + '_target' for tag in target_tags]
         # copy the target column to targetName + '_target' column, so that the original target tag could be used
         # as an feature
-        self.data.assign({target_tag + '_target': self.data[target_tag]} for target_tag in target_tags)
+        to_be_assigned = {}
+        for tag in target_tags:
+            to_be_assigned[tag + '_target'] = self.data[tag]
+        self.data.assign(to_be_assigned)
         # for every target_tag in target_tags, shift back by "shift" parameter
         for tag in true_target_tags:
             self.data[tag] = self.data[tag].shift(shift)
