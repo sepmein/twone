@@ -20,16 +20,17 @@ class Container:
         :param data_frame: pandas data frame object
         """
         self.data = data_frame
-        self.__data__ = data_frame
         self.scale = preprocessing.StandardScaler()
-        self.normalizer = self.scale.fit(data_frame)
-        self.feature_tags = []
-        self.target_tags = []
+
+        # data normalizer
+        self.normalizer = None
 
         # take control over randomness
         self.__random_seed__ = random.seed(a=10)
 
         # init feature data and target data
+        self.feature_tags = []
+        self.target_tags = []
         self.__feature_data__ = None
         self.__target_data__ = None
 
@@ -46,25 +47,17 @@ class Container:
         # TODO: To make this fn fitting to different ranks
         return self.data.isnull().any()
 
-    def restore(self):
-        """
-
-        :return:
-        """
-        self.data = self.__data__
-        return self
-
-    def interpolate(self, data=None, method=None):
+    def interpolate(self, data=None, method='linear'):
         """
         interpolate
         :param data:
         :param method:
         :return:
         """
-        self.__data__ = self.data
         if data is None:
             data = self.data
         self.data = data.interpolate(method=method)
+        self.data = self.data.dropna()
         return self
 
     def set_feature_tags(self, feature_tags):
@@ -111,22 +104,26 @@ class Container:
         self.target_tags.append(tag)
         return self
 
-    def fit(self, data):
+    def fit(self, data=None):
         """
 
         :param data:
         :return:
         """
+        if data is None:
+            data = self.data
         self.normalizer = self.scale.fit(data)
         return self
 
-    def normalize(self, data):
+    def normalize(self, data=None):
         """
         Normalized data using predefined scale
         should always normalized feature data, not target data
         :param data:
         :return:
         """
+        if data is None:
+            data = self.data
         return self.normalizer.transform(data)
 
     def compute_feature_data(self, shuffle=False):
@@ -348,7 +345,7 @@ class RNNContainer(Container):
         :param data_frame:
         """
         Container.__init__(self, data_frame)
-        self._total_length = self.__data__.shape[0]
+        self._total_length = self.data.shape[0]
 
         # training, cv and test data
         self.__training_features__ = None
@@ -392,12 +389,12 @@ class RNNContainer(Container):
         true_target_tags = [tag + '_target' for tag in target_tags]
         # copy the target column to targetName + '_target' column, so that the original target tag could be used
         # as an feature
-        self.__data__.assign({target_tag + '_target': self.__data__[target_tag]} for target_tag in target_tags)
+        self.data.assign({target_tag + '_target': self.data[target_tag]} for target_tag in target_tags)
         # for every target_tag in target_tags, shift back by "shift" parameter
         for tag in true_target_tags:
-            self.__data__[tag] = self.__data__[tag].shift(shift)
+            self.data[tag] = self.data[tag].shift(shift)
         # For seq labeling problem, remove the row that included with NAN results
-        self.__data__ = self.__data__[0:shift]
+        self.data = self.data[0:shift]
         # set target tags and feature tags
         # because target tags could be used as feature tags
         self.append_feature_tags(target_tags)
@@ -425,7 +422,7 @@ class RNNContainer(Container):
         # reshape features
         features_reshaped_by_batch = np.reshape(normalized_array, [dim_0, dim_1, self.num_features])
         # reshape targets
-        targets_array = self.__data__[self.target_tags].values
+        targets_array = self.data[self.target_tags].values
         targets_reshaped_by_batch = np.reshape(targets_array, [dim_0, dim_1, self.num_targets])
         # calculate epochs
         epochs = batch_partition_size // time_steps
@@ -534,3 +531,15 @@ class RNNContainer(Container):
         """
         for target in self.__test_targets__:
             yield target
+
+    def dealing_with_missing_data(self):
+        """
+        High level method combined by other methods to deal with missing data in time series.
+        :return:
+        """
+        self.interpolate()
+        # after interpolation, if there are any data in the first row or last row is missing,
+        # The simple way of dealing such data is to drop it.
+        self.data.dropna()
+        self.fit()
+        self.normalize()
