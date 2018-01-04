@@ -45,7 +45,7 @@ class Container:
         :return:
         """
         # TODO: To make this fn fitting to different ranks
-        return self.data.isnull().any()
+        return self.data.isnull().any().any()
 
     def interpolate(self, data=None, method='linear'):
         """
