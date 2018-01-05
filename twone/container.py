@@ -347,7 +347,6 @@ class RNNContainer(Container):
         :param data_frame:
         """
         Container.__init__(self, data_frame)
-        self._total_length = self.data.shape[0]
 
         # training, cv and test data
         self.__training_features__ = None
@@ -356,6 +355,14 @@ class RNNContainer(Container):
         self.__cv_targets__ = None
         self.__test_features__ = None
         self.__test_targets__ = None
+
+    @property
+    def _total_length(self):
+        """
+        calculate total length of the container
+        :return: int
+        """
+        return self.data.shape[0]
 
     @property
     def num_features(self):
