@@ -75,7 +75,8 @@ class Container:
         :param feature_tags:
         :return:
         """
-        self.feature_tags.append(feature_tags)
+        self.feature_tags.append(tag for tag in feature_tags)
+        return self
 
     def set_target_tags(self, target_tags):
         """
@@ -389,10 +390,8 @@ class RNNContainer(Container):
         true_target_tags = [tag + '_target' for tag in target_tags]
         # copy the target column to targetName + '_target' column, so that the original target tag could be used
         # as an feature
-        to_be_assigned = {}
         for tag in target_tags:
-            to_be_assigned[tag + '_target'] = self.data[tag]
-        self.data.assign(to_be_assigned)
+            self.data[tag + '_target'] = self.data[tag]
         # for every target_tag in target_tags, shift back by "shift" parameter
         for tag in true_target_tags:
             self.data[tag] = self.data[tag].shift(shift)
@@ -401,7 +400,7 @@ class RNNContainer(Container):
         # set target tags and feature tags
         # because target tags could be used as feature tags
         self.append_feature_tags(target_tags)
-        self.feature_tags = target_tags
+        self.target_tags = true_target_tags
         return self
 
     def gen_batch(self, batch=5, time_steps=128):
