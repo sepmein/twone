@@ -419,7 +419,7 @@ class RNNContainer(Container):
 
     def gen_batch(self,
                   batch=5,
-                  random=True,
+                  random_batch=True,
                   time_steps=128,
                   shuffle=True,
                   truncate_from_head=True
@@ -429,7 +429,7 @@ class RNNContainer(Container):
         check tensorflow documentations for explanation
         current version is 1.4
         :param batch:
-        :param random: Bool
+        :param random_batch: Bool
         :param time_steps:
         :param shuffle:
         :param truncate_from_head:
@@ -497,7 +497,7 @@ class RNNContainer(Container):
         self.__test_features__ = features[training_data_length + cv_data_length:, :, :]
         self.__test_targets__ = targets[training_data_length + cv_data_length, :, :]
         self.__batch__ = batch
-        self.__random__ = random
+        self.__random__ = random_batch
         return self
 
     def get_training_features_and_targets(self):
