@@ -75,7 +75,8 @@ class Container:
         :param feature_tags:
         :return:
         """
-        self.feature_tags.append(tag for tag in feature_tags)
+        for tag in feature_tags:
+            self.feature_tags.append(tag)
         return self
 
     def set_target_tags(self, target_tags):
