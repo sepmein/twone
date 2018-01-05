@@ -422,13 +422,21 @@ class RNNContainer(Container):
         """
         if self.feature_tags is None:
             raise Exception('Feature tags not set, can\'t get feature data')
-        features = self.data[self.feature_tags]
+        features = self.data[self.feature_tags].values
         # fit and transform feature data
         self.fit(features)
         normalized_array = self.normalize(features)
         # calculate dims for reshape
         dim_0 = batch
         dim_1 = batch_partition_size = self._total_length // batch
+        # 对于除不尽的序列，把头上多出来的部分截去
+        if self._total_length / (batch * time_steps) == 0.0:
+            divisible = True
+        else:
+            divisible = False
+
+        # if not divisible:
+        # remainder = self._total_length -
         # reshape features
         features_reshaped_by_batch = np.reshape(normalized_array, [dim_0, dim_1, self.num_features])
         # reshape targets
