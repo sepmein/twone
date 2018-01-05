@@ -113,7 +113,7 @@ class Container:
         :return:
         """
         if data is None:
-            data = self.data
+            data = self.data[self.feature_tags].values
         self.normalizer = self.scale.fit(data)
         return self
 
@@ -125,7 +125,7 @@ class Container:
         :return:
         """
         if data is None:
-            data = self.data
+            data = self.data[self.feature_tags].values
         return self.normalizer.transform(data)
 
     def compute_feature_data(self, shuffle=False):
@@ -349,12 +349,18 @@ class RNNContainer(Container):
         Container.__init__(self, data_frame)
 
         # training, cv and test data
-        self.__training_features__ = None
-        self.__training_targets__ = None
-        self.__cv_features__ = None
-        self.__cv_targets__ = None
         self.__test_features__ = None
         self.__test_targets__ = None
+        self.__test_features__ = None
+        self.__test_targets__ = None
+        self.__test_features__ = None
+        self.__test_targets__ = None
+        self.__batch__ = None
+        self.__random__ = None
+
+        self.__test_pointer__ = 0
+        self.__test_pointer__ = 0
+        self.__test_pointer__ = 0
 
     @property
     def _total_length(self):
@@ -411,153 +417,168 @@ class RNNContainer(Container):
         self.target_tags = true_target_tags
         return self
 
-    def gen_batch(self, batch=5, time_steps=128):
+    def gen_batch(self,
+                  batch=5,
+                  random=True,
+                  time_steps=128,
+                  shuffle=True,
+                  truncate_from_head=True
+                  ):
         """
         reshape feature data into (batch, max_time, num_features) for tf.nn.dynamic_rnn function
         check tensorflow documentations for explanation
         current version is 1.4
         :param batch:
+        :param random: Bool
         :param time_steps:
+        :param shuffle:
+        :param truncate_from_head:
         :return:
         """
-        if self.feature_tags is None:
-            raise Exception('Feature tags not set, can\'t get feature data')
-        features = self.data[self.feature_tags].values
+        # === step 0 ===
+        # Get all data as numpy array
+        # TODO, what if data is too large to fit in the memory?
         # fit and transform feature data
-        self.fit(features)
-        normalized_array = self.normalize(features)
-        # calculate dims for reshape
-        dim_0 = batch
-        dim_1 = batch_partition_size = self._total_length // batch
-        # 对于除不尽的序列，把头上多出来的部分截去
-        if self._total_length / (batch * time_steps) == 0.0:
-            divisible = True
-        else:
+        self.fit()
+        normalized_features = self.normalize()
+        self.data[self.feature_tags] = normalized_features
+        all_data = self.data.values
+
+        # === step 1 ===
+        # Calculate if the total length could been divided by time_steps exactly.
+        # Get number of sequences, remainder (if not divisible)
+        remainder = 0
+        sequences = self._total_length // time_steps
+        if self._total_length % time_steps > 0:
             divisible = False
-
-        # if not divisible:
-        # remainder = self._total_length -
-        # reshape features
-        features_reshaped_by_batch = np.reshape(normalized_array, [dim_0, dim_1, self.num_features])
-        # reshape targets
-        targets_array = self.data[self.target_tags].values
-        targets_reshaped_by_batch = np.reshape(targets_array, [dim_0, dim_1, self.num_targets])
-        # calculate epochs
-        epochs = batch_partition_size // time_steps
-        # print epoch length for debug
-        # TODO: remove it later
-        print(epochs)
-
-        # compute test data length
-        test_data_length = epochs * self.test_set_split_ratio
-        if test_data_length <= 1:
-            test_data_length = 1
+            remainder = self._total_length - time_steps * sequences
         else:
-            test_data_length = round(test_data_length)
+            divisible = True
+
+        # === step 2 ===
+        # Truncate head or tail by truncate_from_head argument
+        if not divisible:
+            if truncate_from_head:
+                truncated = all_data[remainder:, :]
+            else:
+                truncated = all_data[:self._total_length - remainder, :]
+        else:
+            truncated = all_data
+
+        # === step 3 ===
+        # Reshape data into (sequences, time_steps, num_features + num_targets)
+        # Shuffle all data based on the first dim of reshaped data
+        # So that the sequence is shuffled and the time_steps is kept.
+        all_data_reshaped = np.reshape(truncated, (sequences, time_steps, self.num_features + self.num_targets))
+        if shuffle:
+            np.random.shuffle(all_data_reshaped)
+
+        # === step 4 ===
+        # Finally get features and targets here
+        features = all_data_reshaped[:, :, :self.num_features]
+        targets = all_data_reshaped[:, :, self.num_features:]
+
+        # === step 5 ===
+        # compute test data length
+        test_data_length = sequences * self.test_set_split_ratio
+        test_data_length = round(test_data_length)
 
         # compute cross validation data length
-        cv_data_length = epochs * self.cross_validation_set_split_ratio
-        if cv_data_length <= 1:
-            cv_data_length = 1
-        else:
-            cv_data_length = round(cv_data_length)
+        cv_data_length = sequences * self.cross_validation_set_split_ratio
+        cv_data_length = round(cv_data_length)
 
         # compute training data length by epochs, cv_data_length and test_data_length
-        training_data_length = epochs - cv_data_length - test_data_length
+        training_data_length = sequences - cv_data_length - test_data_length
 
-        if training_data_length < 1:
-            raise Exception('[twone Exception]: rnn.gen_batch | training data epoch is less than 1, please consider' +
-                            'lower down the batch size or increase total data length')
-
-        training_features = []
-        training_targets = []
-        cv_features = []
-        cv_targets = []
-        test_features = []
-        test_targets = []
-        for i in range(epochs):
-            current_feature = features_reshaped_by_batch[:, time_steps * i: time_steps * (i + 1):]
-            current_target = targets_reshaped_by_batch[:, time_steps * i: time_steps * (i + 1):]
-            if i < training_data_length:
-                training_features.append(current_feature)
-                training_targets.append(current_target)
-            elif i < training_data_length + cv_data_length:
-                cv_features.append(current_feature)
-                cv_targets.append(current_target)
-            else:
-                test_features.append(current_feature)
-                test_targets.append(current_target)
-
-        self.__training_features__ = training_features
-        self.__training_targets__ = training_targets
-        self.__cv_features__ = cv_features
-        self.__cv_targets__ = cv_targets
-        self.__test_features__ = test_features
-        self.__test_targets__ = test_targets
+        self.__test_features__ = features[:training_data_length, :, :]
+        self.__test_targets__ = targets[:training_data_length, :, :]
+        self.__test_features__ = features[training_data_length:training_data_length + cv_data_length, :, :]
+        self.__test_targets__ = targets[training_data_length: training_data_length + cv_data_length, :, :]
+        self.__test_features__ = features[training_data_length + cv_data_length:, :, :]
+        self.__test_targets__ = targets[training_data_length + cv_data_length, :, :]
+        self.__batch__ = batch
+        self.__random__ = random
         return self
 
-    def get_training_features(self):
+    def get_training_features_and_targets(self):
 
         """
 
         :return:
         """
-        for feature in self.__training_targets__:
-            yield feature
+        training_sequences_length = self.__test_features__.shape[0]
+        if self.__batch__ > training_sequences_length:
+            raise Exception('Batch size is too big, consider low down batch size')
+        while True:
+            if self.__random__:
+                index = np.random.randint(
+                    low=0,
+                    high=training_sequences_length,
+                    size=self.__batch__)
+                yield (self.__test_features__[index], self.__test_targets__[index])
+            else:
+                start = self.__test_pointer__ * self.__batch__
+                end = self.__test_pointer__ * (self.__batch__ + 1)
+                # Pointer greater than the total length of the training data
+                # 如果一旦开始或者终止的index越界，那么就归零，并且返回最上面的那一串数据
+                # 这样的坏处是，最后那一小部分除不净的数据永远也用不到了，就好像被删除了
+                if start > training_sequences_length or end > training_sequences_length:
+                    self.__test_pointer__ = 0
+                    yield (self.__test_features__[0: self.__batch__], self.__test_targets__[0: self.__batch__])
+                else:
+                    yield (self.__test_features__[start: end], self.__test_targets__[start: end])
 
-    def get_training_targets(self):
-
-        """
-
-        :return:
-        """
-        for target in self.__training_targets__:
-            yield target
-
-    def get_cross_validation_features(self):
-
-        """
-
-        :return:
-        """
-        for feature in self.__cv_targets__:
-            yield feature
-
-    def get_cross_validation_targets(self):
-
-        """
-
-        :return:
-        """
-        for target in self.__cv_targets__:
-            yield target
-
-    def get_test_features(self):
+    def get_cross_validation_features_and_targets(self):
 
         """
 
         :return:
         """
-        for feature in self.__test_features__:
-            yield feature
+        cv_sequences_length = self.__test_features__.shape[0]
+        if self.__batch__ > cv_sequences_length:
+            raise Exception('Batch size is too big, consider low down batch size')
+        while True:
+            if self.__random__:
+                index = np.random.randint(
+                    low=0,
+                    high=cv_sequences_length,
+                    size=self.__batch__)
+                yield (self.__test_features__[index], self.__test_targets__[index])
+            else:
+                start = self.__test_pointer__ * self.__batch__
+                end = self.__test_pointer__ * (self.__batch__ + 1)
+                # Pointer greater than the total length of the training data
+                # 如果一旦开始或者终止的index越界，那么就归零，并且返回最上面的那一串数据
+                # 这样的坏处是，最后那一小部分除不净的数据永远也用不到了，就好像被删除了
+                if start > cv_sequences_length or end > cv_sequences_length:
+                    self.__test_pointer__ = 0
+                    yield (self.__test_features__[0: self.__batch__], self.__test_targets__[0: self.__batch__])
+                else:
+                    yield (self.__test_features__[start: end], self.__test_targets__[start: end])
 
-    def get_test_targets(self):
-
+    def get_test_features_and_targets(self):
         """
 
         :return:
         """
-        for target in self.__test_targets__:
-            yield target
-
-    def dealing_with_missing_data(self):
-        """
-        High level method combined by other methods to deal with missing data in time series.
-        :return:
-        """
-        self.interpolate()
-        # after interpolation, if there are any data in the first row or last row is missing,
-        # The simple way of dealing such data is to drop it.
-        self.data.dropna()
-        self.fit()
-        self.normalize()
+        test_sequences_length = self.__test_features__.shape[0]
+        if self.__batch__ > test_sequences_length:
+            raise Exception('Batch size is too big, consider low down batch size')
+        while True:
+            if self.__random__:
+                index = np.random.randint(
+                    low=0,
+                    high=test_sequences_length,
+                    size=self.__batch__)
+                yield (self.__test_features__[index], self.__test_targets__[index])
+            else:
+                start = self.__test_pointer__ * self.__batch__
+                end = self.__test_pointer__ * (self.__batch__ + 1)
+                # Pointer greater than the total length of the training data
+                # 如果一旦开始或者终止的index越界，那么就归零，并且返回最上面的那一串数据
+                # 这样的坏处是，最后那一小部分除不净的数据永远也用不到了，就好像被删除了
+                if start > test_sequences_length or end > test_sequences_length:
+                    self.__test_pointer__ = 0
+                    yield (self.__test_features__[0: self.__batch__], self.__test_targets__[0: self.__batch__])
+                else:
+                    yield (self.__test_features__[start: end], self.__test_targets__[start: end])
