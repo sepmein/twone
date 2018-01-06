@@ -441,7 +441,7 @@ class RNNContainer(Container):
         # fit and transform feature data
         self.fit()
         normalized_features = self.normalize()
-        self.data[self.feature_tags] = normalized_features
+        self.data.loc[:, self.feature_tags] = normalized_features
         all_data = self.data.values
 
         # === step 1 ===
