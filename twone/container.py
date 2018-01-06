@@ -349,17 +349,17 @@ class RNNContainer(Container):
         Container.__init__(self, data_frame)
 
         # training, cv and test data
-        self.__test_features__ = None
-        self.__test_targets__ = None
-        self.__test_features__ = None
-        self.__test_targets__ = None
+        self.__training_features__ = None
+        self.__training_targets__ = None
+        self.__cv_features__ = None
+        self.__cv_targets__ = None
         self.__test_features__ = None
         self.__test_targets__ = None
         self.__batch__ = None
         self.__random__ = None
 
-        self.__test_pointer__ = 0
-        self.__test_pointer__ = 0
+        self.__training_pointer__ = 0
+        self.__cv_pointer__ = 0
         self.__test_pointer__ = 0
 
     @property
@@ -490,10 +490,12 @@ class RNNContainer(Container):
         # compute training data length by epochs, cv_data_length and test_data_length
         training_data_length = sequences - cv_data_length - test_data_length
 
-        self.__test_features__ = features[:training_data_length, :, :]
-        self.__test_targets__ = targets[:training_data_length, :, :]
-        self.__test_features__ = features[training_data_length:training_data_length + cv_data_length, :, :]
-        self.__test_targets__ = targets[training_data_length: training_data_length + cv_data_length, :, :]
+        # === step 6 ===
+        # copy to self.variables
+        self.__training_features__ = features[:training_data_length, :, :]
+        self.__training_targets__ = targets[:training_data_length, :, :]
+        self.__cv_features__ = features[training_data_length:training_data_length + cv_data_length, :, :]
+        self.__cv_targets__ = targets[training_data_length: training_data_length + cv_data_length, :, :]
         self.__test_features__ = features[training_data_length + cv_data_length:, :, :]
         self.__test_targets__ = targets[training_data_length + cv_data_length, :, :]
         self.__batch__ = batch
@@ -506,7 +508,7 @@ class RNNContainer(Container):
 
         :return:
         """
-        training_sequences_length = self.__test_features__.shape[0]
+        training_sequences_length = self.__training_features__.shape[0]
         if self.__batch__ > training_sequences_length:
             raise Exception('Batch size is too big, consider low down batch size')
         while True:
@@ -515,18 +517,18 @@ class RNNContainer(Container):
                     low=0,
                     high=training_sequences_length,
                     size=self.__batch__)
-                yield (self.__test_features__[index], self.__test_targets__[index])
+                yield (self.__training_features__[index], self.__training_targets__[index])
             else:
-                start = self.__test_pointer__ * self.__batch__
-                end = self.__test_pointer__ * (self.__batch__ + 1)
+                start = self.__training_pointer__ * self.__batch__
+                end = (self.__training_pointer__ + 1) * self.__batch__
                 # Pointer greater than the total length of the training data
                 # 如果一旦开始或者终止的index越界，那么就归零，并且返回最上面的那一串数据
                 # 这样的坏处是，最后那一小部分除不净的数据永远也用不到了，就好像被删除了
                 if start > training_sequences_length or end > training_sequences_length:
-                    self.__test_pointer__ = 0
-                    yield (self.__test_features__[0: self.__batch__], self.__test_targets__[0: self.__batch__])
+                    self.__training_pointer__ = 0
+                    yield (self.__training_features__[0: self.__batch__], self.__training_targets__[0: self.__batch__])
                 else:
-                    yield (self.__test_features__[start: end], self.__test_targets__[start: end])
+                    yield (self.__training_features__[start: end], self.__training_targets__[start: end])
 
     def get_cross_validation_features_and_targets(self):
 
@@ -534,7 +536,7 @@ class RNNContainer(Container):
 
         :return:
         """
-        cv_sequences_length = self.__test_features__.shape[0]
+        cv_sequences_length = self.__cv_features__.shape[0]
         if self.__batch__ > cv_sequences_length:
             raise Exception('Batch size is too big, consider low down batch size')
         while True:
@@ -543,18 +545,18 @@ class RNNContainer(Container):
                     low=0,
                     high=cv_sequences_length,
                     size=self.__batch__)
-                yield (self.__test_features__[index], self.__test_targets__[index])
+                yield (self.__cv_features__[index], self.__cv_targets__[index])
             else:
-                start = self.__test_pointer__ * self.__batch__
-                end = self.__test_pointer__ * (self.__batch__ + 1)
+                start = self.__cv_pointer__ * self.__batch__
+                end = (self.__cv_pointer__ + 1) * self.__batch__
                 # Pointer greater than the total length of the training data
                 # 如果一旦开始或者终止的index越界，那么就归零，并且返回最上面的那一串数据
                 # 这样的坏处是，最后那一小部分除不净的数据永远也用不到了，就好像被删除了
                 if start > cv_sequences_length or end > cv_sequences_length:
-                    self.__test_pointer__ = 0
-                    yield (self.__test_features__[0: self.__batch__], self.__test_targets__[0: self.__batch__])
+                    self.__cv_pointer__ = 0
+                    yield (self.__cv_features__[0: self.__batch__], self.__cv_targets__[0: self.__batch__])
                 else:
-                    yield (self.__test_features__[start: end], self.__test_targets__[start: end])
+                    yield (self.__cv_features__[start: end], self.__cv_targets__[start: end])
 
     def get_test_features_and_targets(self):
         """
@@ -573,7 +575,7 @@ class RNNContainer(Container):
                 yield (self.__test_features__[index], self.__test_targets__[index])
             else:
                 start = self.__test_pointer__ * self.__batch__
-                end = self.__test_pointer__ * (self.__batch__ + 1)
+                end = (self.__test_pointer__ + 1) * self.__batch__
                 # Pointer greater than the total length of the training data
                 # 如果一旦开始或者终止的index越界，那么就归零，并且返回最上面的那一串数据
                 # 这样的坏处是，最后那一小部分除不净的数据永远也用不到了，就好像被删除了
