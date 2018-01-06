@@ -508,7 +508,10 @@ class RNNContainer(Container):
 
         :return:
         """
-        training_sequences_length = self.__training_features__.shape[0]
+        try:
+            training_sequences_length = self.__training_features__.shape[0]
+        except Exception:
+            raise Exception('Call Container.gen_batch() before getting features and target')
         if self.__batch__ > training_sequences_length:
             raise Exception('Batch size is too big, consider low down batch size')
         while True:
@@ -536,7 +539,10 @@ class RNNContainer(Container):
 
         :return:
         """
-        cv_sequences_length = self.__cv_features__.shape[0]
+        try:
+            cv_sequences_length = self.__cv_features__.shape[0]
+        except Exception:
+            raise Exception('Call Container.gen_batch() before getting features and target')
         if self.__batch__ > cv_sequences_length:
             raise Exception('Batch size is too big, consider low down batch size')
         while True:
@@ -563,7 +569,10 @@ class RNNContainer(Container):
 
         :return:
         """
-        test_sequences_length = self.__test_features__.shape[0]
+        try:
+            test_sequences_length = self.__test_features__.shape[0]
+        except Exception:
+            raise Exception('Call Container.gen_batch() before getting features and target')
         if self.__batch__ > test_sequences_length:
             raise Exception('Batch size is too big, consider low down batch size')
         while True:
