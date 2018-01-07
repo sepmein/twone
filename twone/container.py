@@ -362,6 +362,22 @@ class RNNContainer(Container):
         self.__cv_pointer__ = 0
         self.__test_pointer__ = 0
 
+        self.__lock_output__ = True
+
+        self.__has_training_features_been_retrieved__ = False
+        self.__has_training_targets_been_retrieved__ = False
+        self.__has_cv_features_been_retrieved__ = False
+        self.__has_cv_targets_been_retrieved__ = False
+        self.__has_test_features_been_retrieved__ = False
+        self.__has_test_targets_been_retrieved__ = False
+
+        self.__current_training_features_storage__ = None
+        self.__current_training_targets_storage__ = None
+        self.__current_cv_features_storage__ = None
+        self.__current_cv_targets_storage__ = None
+        self.__current_test_features_storage__ = None
+        self.__current_test_targets_storage__ = None
+
     @property
     def _total_length(self):
         """
@@ -422,7 +438,8 @@ class RNNContainer(Container):
                   random_batch=True,
                   time_steps=128,
                   shuffle=True,
-                  truncate_from_head=True
+                  truncate_from_head=True,
+                  lock=True
                   ):
         """
         reshape feature data into (batch, max_time, num_features) for tf.nn.dynamic_rnn function
@@ -433,6 +450,7 @@ class RNNContainer(Container):
         :param time_steps:
         :param shuffle:
         :param truncate_from_head:
+        :param lock: Boolean
         :return:
         """
         # === step 0 ===
@@ -500,6 +518,7 @@ class RNNContainer(Container):
         self.__test_targets__ = targets[training_data_length + cv_data_length, :, :]
         self.__batch__ = batch
         self.__random__ = random_batch
+        self.__lock_output__ = lock
         return self
 
     def get_training_features_and_targets(self):
@@ -533,7 +552,72 @@ class RNNContainer(Container):
                 else:
                     yield (self.__training_features__[start: end], self.__training_targets__[start: end])
 
-    def get_cross_validation_features_and_targets(self):
+    def _get_paired_retrieve_state(self, target):
+        training_pair = (self.__has_training_features_been_retrieved__, self.__has_training_targets_been_retrieved__)
+        cv_pair = (
+            self.__has_cv_features_been_retrieved__, self.__has_cv_targets_been_retrieved__)
+        test_pair = (self.__has_test_features_been_retrieved__, self.__has_test_targets_been_retrieved__)
+        for pair in [training_pair, cv_pair, test_pair]:
+            if target in pair:
+                index = pair.index(target)
+                # if index is 1, result is 0
+                # else result 1
+                if index is 1:
+                    return pair[0]
+                else:
+                    return pair[1]
+
+    def _data_retrieve_state(self, target):
+        paired_state = self._get_paired_retrieve_state(target)
+        if target and paired_state:
+            return 1
+        elif target and not paired_state:
+            return 2
+        elif not target and paired_state:
+            return 3
+        else:
+            return 4
+
+    def _run_get_training_features_and_targets(self):
+        self.__current_training_features_storage__, self.__training_target_storage__ = next(
+            self.get_training_features_and_targets())
+
+    def get_training_features(self):
+        if not self.__lock_output__:
+            self._run_get_training_features_and_targets()
+            return self.__current_training_features_storage__
+        state = self._data_retrieve_state(self.__has_training_features_been_retrieved__)
+        if state is 1:
+            # set training feature retrieve state to false
+            # set training target retrieve state to false
+            # get state
+            self._run_get_training_features_and_targets()
+            self.__has_training_features_been_retrieved__ = False
+            self.__has_training_targets_been_retrieved__ = False
+            return self.__current_training_features_storage__
+        elif state is 2:
+            raise Exception('Getting one value two times consecutively')
+        else:
+            self.__has_training_features_been_retrieved__ = True
+            return self.__current_training_features_storage__
+
+    def get_training_targets(self):
+        if not self.__lock_output__:
+            self._run_get_training_features_and_targets()
+            return self.__current_training_targets_storage__
+        state = self._data_retrieve_state(self.__has_training_targets_been_retrieved__)
+        if state is 1:
+            self._run_get_training_features_and_targets()
+            self.__has_training_targets_been_retrieved__ = False
+            self.__has_training_features_been_retrieved__ = False
+            return self.__current_training_targets_storage__
+        elif state is 2:
+            raise Exception('Getting one value two times consecutively')
+        else:
+            self.__has_training_targets_been_retrieved__ = True
+            return self.__current_training_targets_storage__
+
+    def get_cv_features_and_targets(self):
 
         """
 
@@ -564,6 +648,45 @@ class RNNContainer(Container):
                 else:
                     yield (self.__cv_features__[start: end], self.__cv_targets__[start: end])
 
+    def _run_get_cv_features_and_targets(self):
+        self.__current_cv_features_storage__, self.__cv_target_storage__ = next(
+            self.get_cv_features_and_targets())
+
+    def get_cv_features(self):
+        if not self.__lock_output__:
+            self._run_get_cv_features_and_targets()
+            return self.__current_cv_features_storage__
+        state = self._data_retrieve_state(self.__has_cv_features_been_retrieved__)
+        if state is 1:
+            # set cv feature retrieve state to false
+            # set cv target retrieve state to false
+            # get state
+            self._run_get_cv_features_and_targets()
+            self.__has_cv_features_been_retrieved__ = False
+            self.__has_cv_targets_been_retrieved__ = False
+            return self.__current_cv_features_storage__
+        elif state is 2:
+            raise Exception('Getting one value two times consecutively')
+        else:
+            self.__has_cv_features_been_retrieved__ = True
+            return self.__current_cv_features_storage__
+
+    def get_cv_targets(self):
+        if not self.__lock_output__:
+            self._run_get_cv_features_and_targets()
+            return self.__current_cv_targets_storage__
+        state = self._data_retrieve_state(self.__has_cv_targets_been_retrieved__)
+        if state is 1:
+            self._run_get_cv_features_and_targets()
+            self.__has_cv_targets_been_retrieved__ = False
+            self.__has_cv_features_been_retrieved__ = False
+            return self.__current_cv_targets_storage__
+        elif state is 2:
+            raise Exception('Getting one value two times consecutively')
+        else:
+            self.__has_cv_targets_been_retrieved__ = True
+            return self.__current_cv_targets_storage__
+
     def get_test_features_and_targets(self):
         """
 
@@ -593,3 +716,42 @@ class RNNContainer(Container):
                     yield (self.__test_features__[0: self.__batch__], self.__test_targets__[0: self.__batch__])
                 else:
                     yield (self.__test_features__[start: end], self.__test_targets__[start: end])
+
+    def _run_get_test_features_and_targets(self):
+        self.__current_test_features_storage__, self.__test_target_storage__ = next(
+            self.get_test_features_and_targets())
+
+    def get_test_features(self):
+        if not self.__lock_output__:
+            self._run_get_test_features_and_targets()
+            return self.__current_training_features_storage__
+        state = self._data_retrieve_state(self.__has_test_features_been_retrieved__)
+        if state is 1:
+            # set test feature retrieve state to false
+            # set test target retrieve state to false
+            # get state
+            self._run_get_test_features_and_targets()
+            self.__has_test_features_been_retrieved__ = False
+            self.__has_test_targets_been_retrieved__ = False
+            return self.__current_test_features_storage__
+        elif state is 2:
+            raise Exception('Getting one value two times consecutively')
+        else:
+            self.__has_test_features_been_retrieved__ = True
+            return self.__current_test_features_storage__
+
+    def get_test_targets(self):
+        if not self.__lock_output__:
+            self._run_get_test_features_and_targets()
+            return self.__current_test_targets_storage__
+        state = self._data_retrieve_state(self.__has_test_targets_been_retrieved__)
+        if state is 1:
+            self._run_get_test_features_and_targets()
+            self.__has_test_targets_been_retrieved__ = False
+            self.__has_test_features_been_retrieved__ = False
+            return self.__current_test_targets_storage__
+        elif state is 2:
+            raise Exception('Getting one value two times consecutively')
+        else:
+            self.__has_test_targets_been_retrieved__ = True
+            return self.__current_test_targets_storage__
