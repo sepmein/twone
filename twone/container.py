@@ -519,6 +519,12 @@ class RNNContainer(Container):
         self.__batch__ = batch
         self.__random__ = random_batch
         self.__lock_output__ = lock
+
+        # === step 7 ===
+        # Gen first batch
+        self._run_get_training_features_and_targets()
+        self._run_get_cv_features_and_targets()
+        self._run_get_test_features_and_targets()
         return self
 
     def get_training_features_and_targets(self):
@@ -579,7 +585,7 @@ class RNNContainer(Container):
             return 4
 
     def _run_get_training_features_and_targets(self):
-        self.__current_training_features_storage__, self.__training_target_storage__ = next(
+        self.__current_training_features_storage__, self.__current_training_targets_storage__ = next(
             self.get_training_features_and_targets())
 
     def get_training_features(self):
@@ -649,7 +655,7 @@ class RNNContainer(Container):
                     yield (self.__cv_features__[start: end], self.__cv_targets__[start: end])
 
     def _run_get_cv_features_and_targets(self):
-        self.__current_cv_features_storage__, self.__cv_target_storage__ = next(
+        self.__current_cv_features_storage__, self.__current_cv_targets_storage__ = next(
             self.get_cv_features_and_targets())
 
     def get_cv_features(self):
@@ -718,7 +724,7 @@ class RNNContainer(Container):
                     yield (self.__test_features__[start: end], self.__test_targets__[start: end])
 
     def _run_get_test_features_and_targets(self):
-        self.__current_test_features_storage__, self.__test_target_storage__ = next(
+        self.__current_test_features_storage__, self.__current_test_targets_storage__ = next(
             self.get_test_features_and_targets())
 
     def get_test_features(self):
