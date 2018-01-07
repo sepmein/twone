@@ -528,10 +528,9 @@ class RNNContainer(Container):
         return self
 
     def get_training_features_and_targets(self):
-
         """
-
-        :return:
+        
+        :return: generator function for generating training features and targets
         """
         try:
             training_sequences_length = self.__training_features__.shape[0]
@@ -576,12 +575,16 @@ class RNNContainer(Container):
     def _data_retrieve_state(self, target):
         paired_state = self._get_paired_retrieve_state(target)
         if target and paired_state:
+            # both state has been consumed
             return 1
         elif target and not paired_state:
+            # target has been consumed and the paired one has not
             return 2
         elif not target and paired_state:
+            # target has not been consumed and the paired one has
             return 3
         else:
+            # both not consumed
             return 4
 
     def _run_get_training_features_and_targets(self):
