@@ -605,7 +605,7 @@ class RNNContainer(Container):
             self.__has_training_targets_been_retrieved__ = False
             return self.__current_training_features_storage__
         elif state is 2:
-            raise Exception('Getting one value two times consecutively')
+            raise Exception('Getting training features two times consecutively')
         else:
             self.__has_training_features_been_retrieved__ = True
             return self.__current_training_features_storage__
@@ -621,7 +621,7 @@ class RNNContainer(Container):
             self.__has_training_features_been_retrieved__ = False
             return self.__current_training_targets_storage__
         elif state is 2:
-            raise Exception('Getting one value two times consecutively')
+            raise Exception('Getting training targets two times consecutively')
         else:
             self.__has_training_targets_been_retrieved__ = True
             return self.__current_training_targets_storage__
@@ -675,7 +675,7 @@ class RNNContainer(Container):
             self.__has_cv_targets_been_retrieved__ = False
             return self.__current_cv_features_storage__
         elif state is 2:
-            raise Exception('Getting one value two times consecutively')
+            raise Exception('Getting cv features two times consecutively')
         else:
             self.__has_cv_features_been_retrieved__ = True
             return self.__current_cv_features_storage__
@@ -691,7 +691,7 @@ class RNNContainer(Container):
             self.__has_cv_features_been_retrieved__ = False
             return self.__current_cv_targets_storage__
         elif state is 2:
-            raise Exception('Getting one value two times consecutively')
+            raise Exception('Getting cv targets two times consecutively')
         else:
             self.__has_cv_targets_been_retrieved__ = True
             return self.__current_cv_targets_storage__
@@ -744,7 +744,7 @@ class RNNContainer(Container):
             self.__has_test_targets_been_retrieved__ = False
             return self.__current_test_features_storage__
         elif state is 2:
-            raise Exception('Getting one value two times consecutively')
+            raise Exception('Getting test features two times consecutively')
         else:
             self.__has_test_features_been_retrieved__ = True
             return self.__current_test_features_storage__
@@ -760,7 +760,7 @@ class RNNContainer(Container):
             self.__has_test_features_been_retrieved__ = False
             return self.__current_test_targets_storage__
         elif state is 2:
-            raise Exception('Getting one value two times consecutively')
+            raise Exception('Getting test target two times consecutively')
         else:
             self.__has_test_targets_been_retrieved__ = True
             return self.__current_test_targets_storage__
