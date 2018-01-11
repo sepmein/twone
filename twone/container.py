@@ -341,12 +341,16 @@ class RNNContainer(Container):
     """
 
     def __init__(self,
-                 data_frame):
+                 data_frame,
+                 training_set_split_ratio,
+                 cross_validation_set_split_ratio,
+                 test_set_split_ratio):
         """
 
         :param data_frame:
         """
-        Container.__init__(self, data_frame)
+        Container.__init__(self, data_frame, training_set_split_ratio, cross_validation_set_split_ratio,
+                           test_set_split_ratio)
 
         # training, cv and test data
         self.__training_features__ = None
