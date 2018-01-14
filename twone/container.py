@@ -470,10 +470,11 @@ class RNNContainer(Container):
         # Calculate if the total length could been divided by time_steps exactly.
         # Get number of sequences, remainder (if not divisible)
         remainder = 0
-        sequences = self._total_length // time_steps
-        if self._total_length % time_steps > 0:
+        batch_size = time_steps * batch
+        epochs = self._total_length // batch_size
+        if self._total_length % batch_size > 0:
             divisible = False
-            remainder = self._total_length - time_steps * sequences
+            remainder = self._total_length - epochs * batch_size
         else:
             divisible = True
 
@@ -491,7 +492,7 @@ class RNNContainer(Container):
         # Reshape data into (sequences, time_steps, num_features + num_targets)
         # Shuffle all data based on the first dim of reshaped data
         # So that the sequence is shuffled and the time_steps is kept.
-        all_data_reshaped = np.reshape(truncated, (sequences, time_steps, self.num_features + self.num_targets))
+        all_data_reshaped = np.reshape(truncated, (batch, -1, self.num_features + self.num_targets))
         if shuffle:
             np.random.shuffle(all_data_reshaped)
 
@@ -502,24 +503,24 @@ class RNNContainer(Container):
 
         # === step 5 ===
         # compute test data length
-        test_data_length = sequences * self.test_set_split_ratio
+        test_data_length = epochs * self.test_set_split_ratio
         test_data_length = round(test_data_length)
 
         # compute cross validation data length
-        cv_data_length = sequences * self.cross_validation_set_split_ratio
+        cv_data_length = epochs * self.cross_validation_set_split_ratio
         cv_data_length = round(cv_data_length)
 
         # compute training data length by epochs, cv_data_length and test_data_length
-        training_data_length = sequences - cv_data_length - test_data_length
+        training_data_length = epochs - cv_data_length - test_data_length
 
         # === step 6 ===
         # copy to self.variables
-        self.__training_features__ = features[:training_data_length, :, :]
-        self.__training_targets__ = targets[:training_data_length, :, :]
-        self.__cv_features__ = features[training_data_length:training_data_length + cv_data_length, :, :]
-        self.__cv_targets__ = targets[training_data_length: training_data_length + cv_data_length, :, :]
-        self.__test_features__ = features[training_data_length + cv_data_length:, :, :]
-        self.__test_targets__ = targets[training_data_length + cv_data_length, :, :]
+        self.__training_features__ = features[:, :training_data_length, :]
+        self.__training_targets__ = targets[:, :training_data_length, :]
+        self.__cv_features__ = features[:, training_data_length:training_data_length + cv_data_length, :]
+        self.__cv_targets__ = targets[:, training_data_length: training_data_length + cv_data_length, :]
+        self.__test_features__ = features[:, training_data_length + cv_data_length:, :]
+        self.__test_targets__ = targets[:, training_data_length + cv_data_length, :]
         self.__batch__ = batch
         self.__random__ = random_batch
         self.__lock_output__ = lock
