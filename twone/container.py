@@ -382,6 +382,8 @@ class RNNContainer(Container):
         self.__current_test_features_storage__ = None
         self.__current_test_targets_storage__ = None
 
+        self.__time_steps__ = None
+
     @property
     def _total_length(self):
         """
@@ -520,10 +522,11 @@ class RNNContainer(Container):
         self.__cv_features__ = features[:, training_data_length:training_data_length + cv_data_length, :]
         self.__cv_targets__ = targets[:, training_data_length: training_data_length + cv_data_length, :]
         self.__test_features__ = features[:, training_data_length + cv_data_length:, :]
-        self.__test_targets__ = targets[:, training_data_length + cv_data_length, :]
+        self.__test_targets__ = targets[:, training_data_length + cv_data_length:, :]
         self.__batch__ = batch
         self.__random__ = random_batch
         self.__lock_output__ = lock
+        self.__time_steps__ = time_steps
 
         # === step 7 ===
         # Gen first batch
@@ -538,29 +541,22 @@ class RNNContainer(Container):
         :return: generator function for generating training features and targets
         """
         try:
-            training_sequences_length = self.__training_features__.shape[0]
+            training_sequences_length = self.__training_features__.shape[1]
         except Exception:
             raise Exception('Call Container.gen_batch() before getting features and target')
-        if self.__batch__ > training_sequences_length:
-            raise Exception('Batch size is too big, consider low down batch size')
         while True:
-            if self.__random__:
-                index = np.random.randint(
-                    low=0,
-                    high=training_sequences_length,
-                    size=self.__batch__)
-                yield (self.__training_features__[index], self.__training_targets__[index])
+            start = self.__training_pointer__ * self.__time_steps__
+            end = (self.__training_pointer__ + 1) * self.__time_steps__
+            self.__training_pointer__ += 1
+            # Pointer greater than the total length of the training data
+            if start > training_sequences_length or end > training_sequences_length:
+                self.__training_pointer__ = 0
+                yield (
+                    self.__training_features__[:, 0: self.__time_steps__, :],
+                    self.__training_targets__[:, 0: self.__time_steps__, :]
+                )
             else:
-                start = self.__training_pointer__ * self.__batch__
-                end = (self.__training_pointer__ + 1) * self.__batch__
-                # Pointer greater than the total length of the training data
-                # 如果一旦开始或者终止的index越界，那么就归零，并且返回最上面的那一串数据
-                # 这样的坏处是，最后那一小部分除不净的数据永远也用不到了，就好像被删除了
-                if start > training_sequences_length or end > training_sequences_length:
-                    self.__training_pointer__ = 0
-                    yield (self.__training_features__[0: self.__batch__], self.__training_targets__[0: self.__batch__])
-                else:
-                    yield (self.__training_features__[start: end], self.__training_targets__[start: end])
+                yield (self.__training_features__[:, start: end, :], self.__training_targets__[:, start: end, :])
 
     def _get_paired_retrieve_state(self, target):
         training_pair = (self.__has_training_features_been_retrieved__, self.__has_training_targets_been_retrieved__)
@@ -638,29 +634,22 @@ class RNNContainer(Container):
         :return:
         """
         try:
-            cv_sequences_length = self.__cv_features__.shape[0]
+            cv_sequences_length = self.__cv_features__.shape[1]
         except Exception:
             raise Exception('Call Container.gen_batch() before getting features and target')
-        if self.__batch__ > cv_sequences_length:
-            raise Exception('Batch size is too big, consider low down batch size')
         while True:
-            if self.__random__:
-                index = np.random.randint(
-                    low=0,
-                    high=cv_sequences_length,
-                    size=self.__batch__)
-                yield (self.__cv_features__[index], self.__cv_targets__[index])
+            start = self.__cv_pointer__ * self.__time_steps__
+            end = (self.__cv_pointer__ + 1) * self.__time_steps__
+            self.__cv_pointer__ += 1
+            # Pointer greater than the total length of the cv data
+            if start > cv_sequences_length or end > cv_sequences_length:
+                self.__cv_pointer__ = 0
+                yield (
+                    self.__cv_features__[:, 0: self.__time_steps__, :],
+                    self.__cv_targets__[:, 0: self.__time_steps__, :]
+                )
             else:
-                start = self.__cv_pointer__ * self.__batch__
-                end = (self.__cv_pointer__ + 1) * self.__batch__
-                # Pointer greater than the total length of the training data
-                # 如果一旦开始或者终止的index越界，那么就归零，并且返回最上面的那一串数据
-                # 这样的坏处是，最后那一小部分除不净的数据永远也用不到了，就好像被删除了
-                if start > cv_sequences_length or end > cv_sequences_length:
-                    self.__cv_pointer__ = 0
-                    yield (self.__cv_features__[0: self.__batch__], self.__cv_targets__[0: self.__batch__])
-                else:
-                    yield (self.__cv_features__[start: end], self.__cv_targets__[start: end])
+                yield (self.__cv_features__[:, start: end, :], self.__cv_targets__[:, start: end, :])
 
     def _run_get_cv_features_and_targets(self):
         self.__current_cv_features_storage__, self.__current_cv_targets_storage__ = next(
@@ -707,29 +696,22 @@ class RNNContainer(Container):
         :return:
         """
         try:
-            test_sequences_length = self.__test_features__.shape[0]
+            test_sequences_length = self.__test_features__.shape[1]
         except Exception:
             raise Exception('Call Container.gen_batch() before getting features and target')
-        if self.__batch__ > test_sequences_length:
-            raise Exception('Batch size is too big, consider low down batch size')
         while True:
-            if self.__random__:
-                index = np.random.randint(
-                    low=0,
-                    high=test_sequences_length,
-                    size=self.__batch__)
-                yield (self.__test_features__[index], self.__test_targets__[index])
+            start = self.__test_pointer__ * self.__time_steps__
+            end = (self.__test_pointer__ + 1) * self.__time_steps__
+            self.__test_pointer__ += 1
+            # Pointer greater than the total length of the test data
+            if start > test_sequences_length or end > test_sequences_length:
+                self.__test_pointer__ = 0
+                yield (
+                    self.__test_features__[:, 0: self.__time_steps__, :],
+                    self.__test_targets__[:, 0: self.__time_steps__, :]
+                )
             else:
-                start = self.__test_pointer__ * self.__batch__
-                end = (self.__test_pointer__ + 1) * self.__batch__
-                # Pointer greater than the total length of the training data
-                # 如果一旦开始或者终止的index越界，那么就归零，并且返回最上面的那一串数据
-                # 这样的坏处是，最后那一小部分除不净的数据永远也用不到了，就好像被删除了
-                if start > test_sequences_length or end > test_sequences_length:
-                    self.__test_pointer__ = 0
-                    yield (self.__test_features__[0: self.__batch__], self.__test_targets__[0: self.__batch__])
-                else:
-                    yield (self.__test_features__[start: end], self.__test_targets__[start: end])
+                yield (self.__test_features__[:, start: end, :], self.__test_targets__[:, start: end, :])
 
     def _run_get_test_features_and_targets(self):
         self.__current_test_features_storage__, self.__current_test_targets_storage__ = next(
@@ -738,7 +720,7 @@ class RNNContainer(Container):
     def get_test_features(self):
         if not self.__lock_output__:
             self._run_get_test_features_and_targets()
-            return self.__current_training_features_storage__
+            return self.__current_test_features_storage__
         state = self._data_retrieve_state(self.__has_test_features_been_retrieved__)
         if state is 1:
             # set test feature retrieve state to false
