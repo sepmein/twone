@@ -342,9 +342,9 @@ class RNNContainer(Container):
 
     def __init__(self,
                  data_frame,
-                 training_set_split_ratio,
-                 cross_validation_set_split_ratio,
-                 test_set_split_ratio):
+                 training_set_split_ratio=0.7,
+                 cross_validation_set_split_ratio=0.2,
+                 test_set_split_ratio=0.1):
         """
 
         :param data_frame:
@@ -441,9 +441,9 @@ class RNNContainer(Container):
 
     def gen_batch(self,
                   batch=5,
-                  random_batch=True,
-                  time_steps=128,
-                  shuffle=True,
+                  random_batch=False,
+                  time_steps=10,
+                  shuffle=False,
                   truncate_from_head=True,
                   lock=True
                   ):
@@ -464,8 +464,8 @@ class RNNContainer(Container):
         # TODO, what if data is too large to fit in the memory?
         # fit and transform feature data
         self.fit()
-        normalized_features = self.normalize()
-        self.data.loc[:, self.feature_tags] = normalized_features
+        # normalized_features = self.normalize()
+        # normalized_features
         all_data = self.data.values
 
         # === step 1 ===
@@ -506,14 +506,16 @@ class RNNContainer(Container):
         # === step 5 ===
         # compute test data length
         test_data_length = epochs * self.test_set_split_ratio
-        test_data_length = round(test_data_length)
+        test_data_epochs = round(test_data_length)
+        test_data_length = test_data_epochs * time_steps
 
         # compute cross validation data length
         cv_data_length = epochs * self.cross_validation_set_split_ratio
-        cv_data_length = round(cv_data_length)
+        cv_data_epochs = round(cv_data_length)
+        cv_data_length = cv_data_epochs * time_steps
 
         # compute training data length by epochs, cv_data_length and test_data_length
-        training_data_length = epochs - cv_data_length - test_data_length
+        training_data_length = (epochs - cv_data_epochs - test_data_epochs) * time_steps
 
         # === step 6 ===
         # copy to self.variables
@@ -525,6 +527,7 @@ class RNNContainer(Container):
         self.__test_targets__ = targets[:, training_data_length + cv_data_length:, :]
         self.__batch__ = batch
         self.__random__ = random_batch
+        # If not locked output, only returning features is allowed.
         self.__lock_output__ = lock
         self.__time_steps__ = time_steps
 
@@ -535,34 +538,54 @@ class RNNContainer(Container):
         self._run_get_test_features_and_targets()
         return self
 
-    def get_training_features_and_targets(self):
+    def _get_features_and_targets(self, features, targets, index):
         """
-        
-        :return: generator function for generating training features and targets
+        Internal method for getting features and targets
+        :return:
         """
         try:
-            training_sequences_length = self.__training_features__.shape[1]
+            sequences_length = features.shape[1]
         except Exception:
             raise Exception('Call Container.gen_batch() before getting features and target')
-        while True:
-            start = self.__training_pointer__ * self.__time_steps__
-            end = (self.__training_pointer__ + 1) * self.__time_steps__
-            self.__training_pointer__ += 1
-            # Pointer greater than the total length of the training data
-            if start > training_sequences_length or end > training_sequences_length:
-                self.__training_pointer__ = 0
-                yield (
-                    self.__training_features__[:, 0: self.__time_steps__, :],
-                    self.__training_targets__[:, 0: self.__time_steps__, :]
-                )
-            else:
-                yield (self.__training_features__[:, start: end, :], self.__training_targets__[:, start: end, :])
+        if sequences_length < self.__time_steps__:
+            raise Exception('batch size or Time_step is too big.')
+        print('sequences_length: ', sequences_length)
+        print('time_steps: ', self.__time_steps__)
+        index = index + 1
+        start = index * self.__time_steps__
+        end = (index + 1) * self.__time_steps__
+        if start > sequences_length or end > sequences_length:
+            # FIXME: set index to 0, has no effect on self.__point__ 's
+            index = 0
+            yield (features[:, :self.__time_steps__, :],
+                   targets[:, :self.__time_steps__, :])
+        else:
+            yield (features[:, start:end, :], targets[:, start: end, :])
+
+    def get_training_features_and_targets(self):
+        """
+        generator function for generating training features and targets
+        :return:
+        """
+        self.__training_pointer__ += 1
+        return next(
+            self._get_features_and_targets(features=self.__training_features__,
+                                           targets=self.__training_targets__,
+                                           index=self.__training_pointer__)
+        )
 
     def _get_paired_retrieve_state(self, target):
-        training_pair = (self.__has_training_features_been_retrieved__, self.__has_training_targets_been_retrieved__)
-        cv_pair = (
-            self.__has_cv_features_been_retrieved__, self.__has_cv_targets_been_retrieved__)
-        test_pair = (self.__has_test_features_been_retrieved__, self.__has_test_targets_been_retrieved__)
+        """
+        Get target's state from a feature-target pair
+        :param target:
+        :return:
+        """
+        training_pair = (self.__has_training_features_been_retrieved__,
+                         self.__has_training_targets_been_retrieved__)
+        cv_pair = (self.__has_cv_features_been_retrieved__,
+                   self.__has_cv_targets_been_retrieved__)
+        test_pair = (self.__has_test_features_been_retrieved__,
+                     self.__has_test_targets_been_retrieved__)
         for pair in [training_pair, cv_pair, test_pair]:
             if target in pair:
                 index = pair.index(target)
@@ -574,6 +597,15 @@ class RNNContainer(Container):
                     return pair[1]
 
     def _data_retrieve_state(self, target):
+        """
+        Retrieve state based on `target`
+                consumed
+        target  1   1   0   0
+        paired  1   0   1   0
+        state   1   2   3   4
+        :param target:
+        :return:
+        """
         paired_state = self._get_paired_retrieve_state(target)
         if target and paired_state:
             # both state has been consumed
@@ -589,8 +621,11 @@ class RNNContainer(Container):
             return 4
 
     def _run_get_training_features_and_targets(self):
-        self.__current_training_features_storage__, self.__current_training_targets_storage__ = next(
-            self.get_training_features_and_targets())
+        """
+        Using next(generator) method to generate feature and target one time.
+        :return: None
+        """
+        self.__current_training_features_storage__, self.__current_training_targets_storage__ = self.get_training_features_and_targets()
 
     def get_training_features(self):
         if not self.__lock_output__:
@@ -633,23 +668,9 @@ class RNNContainer(Container):
 
         :return:
         """
-        try:
-            cv_sequences_length = self.__cv_features__.shape[1]
-        except Exception:
-            raise Exception('Call Container.gen_batch() before getting features and target')
-        while True:
-            start = self.__cv_pointer__ * self.__time_steps__
-            end = (self.__cv_pointer__ + 1) * self.__time_steps__
-            self.__cv_pointer__ += 1
-            # Pointer greater than the total length of the cv data
-            if start > cv_sequences_length or end > cv_sequences_length:
-                self.__cv_pointer__ = 0
-                yield (
-                    self.__cv_features__[:, 0: self.__time_steps__, :],
-                    self.__cv_targets__[:, 0: self.__time_steps__, :]
-                )
-            else:
-                yield (self.__cv_features__[:, start: end, :], self.__cv_targets__[:, start: end, :])
+        return self._get_features_and_targets(features=self.__cv_features__,
+                                              targets=self.__cv_targets__,
+                                              index=self.__cv_pointer__)
 
     def _run_get_cv_features_and_targets(self):
         self.__current_cv_features_storage__, self.__current_cv_targets_storage__ = next(
@@ -695,23 +716,9 @@ class RNNContainer(Container):
 
         :return:
         """
-        try:
-            test_sequences_length = self.__test_features__.shape[1]
-        except Exception:
-            raise Exception('Call Container.gen_batch() before getting features and target')
-        while True:
-            start = self.__test_pointer__ * self.__time_steps__
-            end = (self.__test_pointer__ + 1) * self.__time_steps__
-            self.__test_pointer__ += 1
-            # Pointer greater than the total length of the test data
-            if start > test_sequences_length or end > test_sequences_length:
-                self.__test_pointer__ = 0
-                yield (
-                    self.__test_features__[:, 0: self.__time_steps__, :],
-                    self.__test_targets__[:, 0: self.__time_steps__, :]
-                )
-            else:
-                yield (self.__test_features__[:, start: end, :], self.__test_targets__[:, start: end, :])
+        return self._get_features_and_targets(features=self.__test_features__,
+                                              targets=self.__test_targets__,
+                                              index=self.__test_pointer__)
 
     def _run_get_test_features_and_targets(self):
         self.__current_test_features_storage__, self.__current_test_targets_storage__ = next(
