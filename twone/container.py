@@ -414,6 +414,52 @@ class RNNContainer(Container):
         else:
             return len(self.target_tags)
 
+    def _get_paired_retrieve_state(self, target):
+        """
+        Get target's state from a feature-target pair
+        :param target:
+        :return:
+        """
+        training_pair = (self.__has_training_features_been_retrieved__,
+                         self.__has_training_targets_been_retrieved__)
+        cv_pair = (self.__has_cv_features_been_retrieved__,
+                   self.__has_cv_targets_been_retrieved__)
+        test_pair = (self.__has_test_features_been_retrieved__,
+                     self.__has_test_targets_been_retrieved__)
+        for pair in [training_pair, cv_pair, test_pair]:
+            if target in pair:
+                index = pair.index(target)
+                # if index is 1, result is 0
+                # else result 1
+                if index is 1:
+                    return pair[0]
+                else:
+                    return pair[1]
+
+    def _data_retrieve_state(self, target):
+        """
+        Retrieve state based on `target`
+                consumed
+        target  1   1   0   0
+        paired  1   0   1   0
+        state   1   2   3   4
+        :param target:
+        :return:
+        """
+        paired_state = self._get_paired_retrieve_state(target)
+        if target and paired_state:
+            # both state has been consumed
+            return 1
+        elif target and not paired_state:
+            # target has been consumed and the paired one has not
+            return 2
+        elif not target and paired_state:
+            # target has not been consumed and the paired one has
+            return 3
+        else:
+            # both not consumed
+            return 4
+
     def set_target_tags(self, target_tags, shift=-1):
         """
         set target tags fn for rnn model.
@@ -464,10 +510,10 @@ class RNNContainer(Container):
         # TODO, what if data is too large to fit in the memory?
         # fit and transform feature data
         self.fit()
-        # normalized_features = self.normalize()
+        normalized_features = self.normalize()
         # normalized_features
-        all_data = self.data.values
-
+        targets = self.data[self.target_tags].values
+        all_data = np.concatenate((normalized_features, targets), axis=1)
         # === step 1 ===
         # Calculate if the total length could been divided by time_steps exactly.
         # Get number of sequences, remainder (if not divisible)
@@ -538,7 +584,7 @@ class RNNContainer(Container):
         self._run_get_test_features_and_targets()
         return self
 
-    def _get_features_and_targets(self, features, targets, index):
+    def _get_features_and_targets(self, features, targets, pointer_name):
         """
         Internal method for getting features and targets
         :return:
@@ -549,17 +595,19 @@ class RNNContainer(Container):
             raise Exception('Call Container.gen_batch() before getting features and target')
         if sequences_length < self.__time_steps__:
             raise Exception('batch size or Time_step is too big.')
-        print('sequences_length: ', sequences_length)
-        print('time_steps: ', self.__time_steps__)
-        index = index + 1
+        # print('sequences_length: ', sequences_length)
+        # print('time_steps: ', self.__time_steps__)
+        index = getattr(self, pointer_name)
         start = index * self.__time_steps__
         end = (index + 1) * self.__time_steps__
         if start > sequences_length or end > sequences_length:
-            # FIXME: set index to 0, has no effect on self.__point__ 's
-            index = 0
+            # 因为0已经获取了，所以直接将pointer指向epoch 1，否则超过的时候获取开头一次
+            # 然后再重置指向0的时候又会再次获取开头一次，等于获取了开头两次
+            setattr(self, pointer_name, 1)
             yield (features[:, :self.__time_steps__, :],
                    targets[:, :self.__time_steps__, :])
         else:
+            setattr(self, pointer_name, index + 1)
             yield (features[:, start:end, :], targets[:, start: end, :])
 
     def get_training_features_and_targets(self):
@@ -567,65 +615,17 @@ class RNNContainer(Container):
         generator function for generating training features and targets
         :return:
         """
-        self.__training_pointer__ += 1
-        return next(
-            self._get_features_and_targets(features=self.__training_features__,
-                                           targets=self.__training_targets__,
-                                           index=self.__training_pointer__)
-        )
-
-    def _get_paired_retrieve_state(self, target):
-        """
-        Get target's state from a feature-target pair
-        :param target:
-        :return:
-        """
-        training_pair = (self.__has_training_features_been_retrieved__,
-                         self.__has_training_targets_been_retrieved__)
-        cv_pair = (self.__has_cv_features_been_retrieved__,
-                   self.__has_cv_targets_been_retrieved__)
-        test_pair = (self.__has_test_features_been_retrieved__,
-                     self.__has_test_targets_been_retrieved__)
-        for pair in [training_pair, cv_pair, test_pair]:
-            if target in pair:
-                index = pair.index(target)
-                # if index is 1, result is 0
-                # else result 1
-                if index is 1:
-                    return pair[0]
-                else:
-                    return pair[1]
-
-    def _data_retrieve_state(self, target):
-        """
-        Retrieve state based on `target`
-                consumed
-        target  1   1   0   0
-        paired  1   0   1   0
-        state   1   2   3   4
-        :param target:
-        :return:
-        """
-        paired_state = self._get_paired_retrieve_state(target)
-        if target and paired_state:
-            # both state has been consumed
-            return 1
-        elif target and not paired_state:
-            # target has been consumed and the paired one has not
-            return 2
-        elif not target and paired_state:
-            # target has not been consumed and the paired one has
-            return 3
-        else:
-            # both not consumed
-            return 4
+        return next(self._get_features_and_targets(features=self.__training_features__,
+                                                   targets=self.__training_targets__,
+                                                   pointer_name='__training_pointer__'))
 
     def _run_get_training_features_and_targets(self):
         """
         Using next(generator) method to generate feature and target one time.
         :return: None
         """
-        self.__current_training_features_storage__, self.__current_training_targets_storage__ = self.get_training_features_and_targets()
+        self.__current_training_features_storage__, self.__current_training_targets_storage__ = \
+            self.get_training_features_and_targets()
 
     def get_training_features(self):
         if not self.__lock_output__:
@@ -637,7 +637,8 @@ class RNNContainer(Container):
             # set training target retrieve state to false
             # get state
             self._run_get_training_features_and_targets()
-            self.__has_training_features_been_retrieved__ = False
+            # 因为已经获取了 features 所以这里立即将获取状态改为 True
+            self.__has_training_features_been_retrieved__ = True
             self.__has_training_targets_been_retrieved__ = False
             return self.__current_training_features_storage__
         elif state is 2:
@@ -653,7 +654,7 @@ class RNNContainer(Container):
         state = self._data_retrieve_state(self.__has_training_targets_been_retrieved__)
         if state is 1:
             self._run_get_training_features_and_targets()
-            self.__has_training_targets_been_retrieved__ = False
+            self.__has_training_targets_been_retrieved__ = True
             self.__has_training_features_been_retrieved__ = False
             return self.__current_training_targets_storage__
         elif state is 2:
@@ -668,13 +669,15 @@ class RNNContainer(Container):
 
         :return:
         """
-        return self._get_features_and_targets(features=self.__cv_features__,
-                                              targets=self.__cv_targets__,
-                                              index=self.__cv_pointer__)
+        return next(
+            self._get_features_and_targets(features=self.__cv_features__,
+                                           targets=self.__cv_targets__,
+                                           pointer_name='__cv_pointer__')
+        )
 
     def _run_get_cv_features_and_targets(self):
-        self.__current_cv_features_storage__, self.__current_cv_targets_storage__ = next(
-            self.get_cv_features_and_targets())
+        self.__current_cv_features_storage__, self.__current_cv_targets_storage__ = \
+            self.get_cv_features_and_targets()
 
     def get_cv_features(self):
         if not self.__lock_output__:
@@ -686,7 +689,7 @@ class RNNContainer(Container):
             # set cv target retrieve state to false
             # get state
             self._run_get_cv_features_and_targets()
-            self.__has_cv_features_been_retrieved__ = False
+            self.__has_cv_features_been_retrieved__ = True
             self.__has_cv_targets_been_retrieved__ = False
             return self.__current_cv_features_storage__
         elif state is 2:
@@ -702,7 +705,7 @@ class RNNContainer(Container):
         state = self._data_retrieve_state(self.__has_cv_targets_been_retrieved__)
         if state is 1:
             self._run_get_cv_features_and_targets()
-            self.__has_cv_targets_been_retrieved__ = False
+            self.__has_cv_targets_been_retrieved__ = True
             self.__has_cv_features_been_retrieved__ = False
             return self.__current_cv_targets_storage__
         elif state is 2:
@@ -716,13 +719,16 @@ class RNNContainer(Container):
 
         :return:
         """
-        return self._get_features_and_targets(features=self.__test_features__,
-                                              targets=self.__test_targets__,
-                                              index=self.__test_pointer__)
+        return next(
+            self._get_features_and_targets(features=self.__test_features__,
+                                           targets=self.__test_targets__,
+                                           pointer_name='__test_pointer__'
+                                           )
+        )
 
     def _run_get_test_features_and_targets(self):
-        self.__current_test_features_storage__, self.__current_test_targets_storage__ = next(
-            self.get_test_features_and_targets())
+        self.__current_test_features_storage__, self.__current_test_targets_storage__ = \
+            self.get_test_features_and_targets()
 
     def get_test_features(self):
         if not self.__lock_output__:
@@ -734,7 +740,7 @@ class RNNContainer(Container):
             # set test target retrieve state to false
             # get state
             self._run_get_test_features_and_targets()
-            self.__has_test_features_been_retrieved__ = False
+            self.__has_test_features_been_retrieved__ = True
             self.__has_test_targets_been_retrieved__ = False
             return self.__current_test_features_storage__
         elif state is 2:
@@ -750,7 +756,7 @@ class RNNContainer(Container):
         state = self._data_retrieve_state(self.__has_test_targets_been_retrieved__)
         if state is 1:
             self._run_get_test_features_and_targets()
-            self.__has_test_targets_been_retrieved__ = False
+            self.__has_test_targets_been_retrieved__ = True
             self.__has_test_features_been_retrieved__ = False
             return self.__current_test_targets_storage__
         elif state is 2:

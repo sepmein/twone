@@ -16,5 +16,9 @@ container.set_target_tags(target_tags)
 container.gen_batch(batch=5, time_steps=100)
 
 for i in range(100):
-    print(container.get_training_features()[0][0])
-    print(container.get_training_targets()[0][0])
+    print('tf :', container.get_training_features()[0][0])
+    print('tt :', container.get_training_targets()[0][0])
+    print('cf :', container.get_cv_features()[0][0])
+    print('ct :', container.get_cv_targets()[0][0])
+    print('gf :', container.get_test_features()[0][0])
+    print('gt :', container.get_test_targets()[0][0])
