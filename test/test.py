@@ -13,7 +13,7 @@ container = RNNContainer(df)
 container.set_feature_tags(feature_tags)
 container.set_target_tags(target_tags)
 
-container.gen_batch(batch=5, time_steps=100)
+container.gen_batch_for_sequence_labeling(batch=5, time_steps=100)
 
 for i in range(100):
     print('tf :', container.get_training_features()[0][0])

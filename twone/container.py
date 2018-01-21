@@ -383,6 +383,7 @@ class RNNContainer(Container):
         self.__current_test_targets_storage__ = None
 
         self.__time_steps__ = None
+        self.__gen_method__ = None
 
     @property
     def _total_length(self):
@@ -485,25 +486,11 @@ class RNNContainer(Container):
         self.target_tags = true_target_tags
         return self
 
-    def gen_batch(self,
-                  batch=5,
-                  random_batch=False,
-                  time_steps=10,
-                  shuffle=False,
-                  truncate_from_head=True,
-                  lock=True
-                  ):
+    def preprocess(self):
         """
-        reshape feature data into (batch, max_time, num_features) for tf.nn.dynamic_rnn function
-        check tensorflow documentations for explanation
-        current version is 1.4
-        :param batch:
-        :param random_batch: Bool
-        :param time_steps:
-        :param shuffle:
-        :param truncate_from_head:
-        :param lock: Boolean
-        :return:
+        Preprocess the data.
+        fit the data and normalize it later
+        :return: preprocessed data
         """
         # === step 0 ===
         # Get all data as numpy array
@@ -514,6 +501,83 @@ class RNNContainer(Container):
         # normalized_features
         targets = self.data[self.target_tags].values
         all_data = np.concatenate((normalized_features, targets), axis=1)
+        return all_data
+
+    def gen_batch_for_sequence_classification(self,
+                                              batch=5,
+                                              randomly=True,
+                                              time_steps=100,
+                                              lock=True
+                                              ):
+        """
+
+        :param batch:
+        :param randomly:
+        :param time_steps:
+        :param lock:
+        :return:
+        """
+        all_data = self.preprocess()
+        length = all_data.shape[0]
+        # step 1: get features and targets
+        features = all_data[:, :self.num_features]
+        targets = all_data[:, self.num_features:]
+        # === step 2 ===
+        # compute test data length
+        test_data_length = length * self.test_set_split_ratio
+        test_data_length = round(test_data_length)
+
+        # compute cross validation data length
+        cv_data_length = length * self.cross_validation_set_split_ratio
+        cv_data_length = round(cv_data_length)
+
+        # compute training data length by epochs, cv_data_length and test_data_length
+        training_data_length = length - cv_data_length - test_data_length
+
+        # === step 4 ===
+        # copy to self.variables
+        self.__training_features__ = features[:training_data_length, :]
+        self.__training_targets__ = targets[:training_data_length, :]
+        self.__cv_features__ = features[training_data_length - time_steps:training_data_length + cv_data_length, :]
+        self.__cv_targets__ = targets[training_data_length - time_steps: training_data_length + cv_data_length, :]
+        self.__test_features__ = features[training_data_length + cv_data_length - time_steps:, :]
+        self.__test_targets__ = targets[training_data_length + cv_data_length - time_steps:, :]
+        self.__batch__ = batch
+        self.__random__ = randomly
+        # If not locked output, only returning features is allowed.
+        self.__lock_output__ = lock
+        self.__time_steps__ = time_steps
+        self.__gen_method__ = 'classification'
+
+        # === step 5 ===
+        # Gen first batch
+        self._run_get_training_features_and_targets()
+        self._run_get_cv_features_and_targets()
+        self._run_get_test_features_and_targets()
+        return self
+
+    def gen_batch_for_sequence_labeling(self,
+                                        batch=5,
+                                        randomly=False,
+                                        time_steps=10,
+                                        shuffle=False,
+                                        truncate_from_head=True,
+                                        lock=True
+                                        ):
+        """
+        reshape feature data into (batch, max_time, num_features) for tf.nn.dynamic_rnn function
+        check tensorflow documentations for explanation
+        current version is 1.4
+        TODO: add random generator feature
+        :param batch:
+        :param randomly: Bool
+        :param time_steps:
+        :param shuffle:
+        :param truncate_from_head:
+        :param lock: Boolean
+        :return:
+        """
+        all_data = self.preprocess()
         # === step 1 ===
         # Calculate if the total length could been divided by time_steps exactly.
         # Get number of sequences, remainder (if not divisible)
@@ -553,7 +617,7 @@ class RNNContainer(Container):
         # compute test data length
         test_data_length = epochs * self.test_set_split_ratio
         test_data_epochs = round(test_data_length)
-        test_data_length = test_data_epochs * time_steps
+        # test_data_length = test_data_epochs * time_steps
 
         # compute cross validation data length
         cv_data_length = epochs * self.cross_validation_set_split_ratio
@@ -572,10 +636,11 @@ class RNNContainer(Container):
         self.__test_features__ = features[:, training_data_length + cv_data_length:, :]
         self.__test_targets__ = targets[:, training_data_length + cv_data_length:, :]
         self.__batch__ = batch
-        self.__random__ = random_batch
+        self.__random__ = randomly
         # If not locked output, only returning features is allowed.
         self.__lock_output__ = lock
         self.__time_steps__ = time_steps
+        self.__gen_method__ = 'labeling'
 
         # === step 7 ===
         # Gen first batch
@@ -584,22 +649,24 @@ class RNNContainer(Container):
         self._run_get_test_features_and_targets()
         return self
 
-    def _get_features_and_targets(self, features, targets, pointer_name):
+    def _get_features_and_targets_for_sequence_labeling(self, features, targets, pointer_name):
         """
         Internal method for getting features and targets
         :return:
         """
+        # get sequence length
         try:
             sequences_length = features.shape[1]
         except Exception:
             raise Exception('Call Container.gen_batch() before getting features and target')
+        # sanity check
         if sequences_length < self.__time_steps__:
             raise Exception('batch size or Time_step is too big.')
-        # print('sequences_length: ', sequences_length)
-        # print('time_steps: ', self.__time_steps__)
+        # compute start and end index
         index = getattr(self, pointer_name)
         start = index * self.__time_steps__
         end = (index + 1) * self.__time_steps__
+        # get data
         if start > sequences_length or end > sequences_length:
             # 因为0已经获取了，所以直接将pointer指向epoch 1，否则超过的时候获取开头一次
             # 然后再重置指向0的时候又会再次获取开头一次，等于获取了开头两次
@@ -610,14 +677,71 @@ class RNNContainer(Container):
             setattr(self, pointer_name, index + 1)
             yield (features[:, start:end, :], targets[:, start: end, :])
 
+    def _get_features_and_targets_for_sequence_classification(self, features, targets, pointer_name):
+        """
+        Internal method for retrieving features and targets data for sequence classification
+        :param features:
+        :param targets:
+        :return:
+        """
+        # get sequence length
+        try:
+            sequences_length = features.shape[0]
+        except Exception:
+            raise Exception('Call Container.gen_batch() before getting features and target')
+        # sanity check
+        if sequences_length < self.__time_steps__:
+            raise Exception('batch size or Time_step is too big.')
+        # result placeholder for vstack
+        features_results = []
+        targets_results = []
+        # generate data_pointer
+        # If generate randomly
+        if self.__random__:
+            for i in range(self.__batch__):
+                # features
+                start = random.randint(0, sequences_length - self.__time_steps__ - 1)
+                end = start + self.__time_steps__
+                current_features = features[start:end, :]
+                features_reshaped = np.reshape(current_features, (1, self.__time_steps__, self.num_features))
+                features_results.append(features_reshaped)
+                # targets
+                current_targets = targets[end, :]
+                targets_reshaped = np.reshape(current_targets, (1, 1, self.num_targets))
+                targets_results.append(targets_reshaped)
+        else:
+            # compute start and end index
+            index = getattr(self, pointer_name)
+            # get data
+            for i in range(self.__batch__):
+                start = index + 1
+                end = start + self.__time_steps__
+                if end > sequences_length:
+                    start = 0
+                    end = self.__time_steps__
+                    setattr(self, pointer_name, 1)
+                current_features = features[start:end, :]
+                features_reshaped = np.reshape(current_features, (1, self.__time_steps__, self.num_features))
+                current_targets = targets[start:end, :]
+                targets_reshaped = np.reshape(current_targets, (1, 1, self.num_targets))
+                features_results.append(features_reshaped)
+                targets_results.append(targets_reshaped)
+            setattr(self, pointer_name, index + 1)
+        yield (np.vstack(features_results), np.vstack(targets_results))
+
     def get_training_features_and_targets(self):
         """
         generator function for generating training features and targets
         :return:
         """
-        return next(self._get_features_and_targets(features=self.__training_features__,
-                                                   targets=self.__training_targets__,
-                                                   pointer_name='__training_pointer__'))
+        if self.__gen_method__ == 'labeling':
+            return next(self._get_features_and_targets_for_sequence_labeling(features=self.__training_features__,
+                                                                             targets=self.__training_targets__,
+                                                                             pointer_name='__training_pointer__'))
+        elif self.__gen_method__ == 'classification':
+            return next(self._get_features_and_targets_for_sequence_classification(features=self.__training_features__,
+                                                                                   targets=self.__training_targets__,
+                                                                                   pointer_name='__training_pointer__'))
 
     def _run_get_training_features_and_targets(self):
         """
@@ -670,9 +794,9 @@ class RNNContainer(Container):
         :return:
         """
         return next(
-            self._get_features_and_targets(features=self.__cv_features__,
-                                           targets=self.__cv_targets__,
-                                           pointer_name='__cv_pointer__')
+            self._get_features_and_targets_for_sequence_labeling(features=self.__cv_features__,
+                                                                 targets=self.__cv_targets__,
+                                                                 pointer_name='__cv_pointer__')
         )
 
     def _run_get_cv_features_and_targets(self):
@@ -720,10 +844,10 @@ class RNNContainer(Container):
         :return:
         """
         return next(
-            self._get_features_and_targets(features=self.__test_features__,
-                                           targets=self.__test_targets__,
-                                           pointer_name='__test_pointer__'
-                                           )
+            self._get_features_and_targets_for_sequence_labeling(features=self.__test_features__,
+                                                                 targets=self.__test_targets__,
+                                                                 pointer_name='__test_pointer__'
+                                                                 )
         )
 
     def _run_get_test_features_and_targets(self):
