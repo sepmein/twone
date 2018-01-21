@@ -499,6 +499,7 @@ class RNNContainer(Container):
         self.fit()
         normalized_features = self.normalize()
         # normalized_features
+        # normalized_features = self.data[self.feature_tags].values
         targets = self.data[self.target_tags].values
         all_data = np.concatenate((normalized_features, targets), axis=1)
         return all_data
@@ -538,10 +539,10 @@ class RNNContainer(Container):
         # copy to self.variables
         self.__training_features__ = features[:training_data_length, :]
         self.__training_targets__ = targets[:training_data_length, :]
-        self.__cv_features__ = features[training_data_length - time_steps:training_data_length + cv_data_length, :]
-        self.__cv_targets__ = targets[training_data_length - time_steps: training_data_length + cv_data_length, :]
-        self.__test_features__ = features[training_data_length + cv_data_length - time_steps:, :]
-        self.__test_targets__ = targets[training_data_length + cv_data_length - time_steps:, :]
+        self.__cv_features__ = features[(training_data_length - time_steps):(training_data_length + cv_data_length), :]
+        self.__cv_targets__ = targets[(training_data_length - time_steps): (training_data_length + cv_data_length), :]
+        self.__test_features__ = features[(training_data_length + cv_data_length - time_steps):, :]
+        self.__test_targets__ = targets[(training_data_length + cv_data_length - time_steps):, :]
         self.__batch__ = batch
         self.__random__ = randomly
         # If not locked output, only returning features is allowed.
@@ -706,15 +707,15 @@ class RNNContainer(Container):
                 features_reshaped = np.reshape(current_features, (1, self.__time_steps__, self.num_features))
                 features_results.append(features_reshaped)
                 # targets
-                current_targets = targets[end, :]
+                current_targets = targets[end - 1, :]
                 targets_reshaped = np.reshape(current_targets, (1, 1, self.num_targets))
                 targets_results.append(targets_reshaped)
         else:
             # compute start and end index
-            index = getattr(self, pointer_name)
             # get data
             for i in range(self.__batch__):
-                start = index + 1
+                index = getattr(self, pointer_name)
+                start = index + i
                 end = start + self.__time_steps__
                 if end > sequences_length:
                     start = 0
@@ -722,11 +723,11 @@ class RNNContainer(Container):
                     setattr(self, pointer_name, 1)
                 current_features = features[start:end, :]
                 features_reshaped = np.reshape(current_features, (1, self.__time_steps__, self.num_features))
-                current_targets = targets[start:end, :]
+                current_targets = targets[end - 1, :]
                 targets_reshaped = np.reshape(current_targets, (1, 1, self.num_targets))
                 features_results.append(features_reshaped)
                 targets_results.append(targets_reshaped)
-            setattr(self, pointer_name, index + 1)
+            setattr(self, pointer_name, getattr(self, pointer_name) + 1)
         yield (np.vstack(features_results), np.vstack(targets_results))
 
     def get_training_features_and_targets(self):
@@ -793,11 +794,20 @@ class RNNContainer(Container):
 
         :return:
         """
-        return next(
-            self._get_features_and_targets_for_sequence_labeling(features=self.__cv_features__,
-                                                                 targets=self.__cv_targets__,
-                                                                 pointer_name='__cv_pointer__')
-        )
+        if self.__gen_method__ == 'labeling':
+            return next(
+                self._get_features_and_targets_for_sequence_labeling(features=self.__cv_features__,
+                                                                     targets=self.__cv_targets__,
+                                                                     pointer_name='__cv_pointer__')
+            )
+        elif self.__gen_method__ == 'classification':
+            return next(
+                self._get_features_and_targets_for_sequence_classification(
+                    features=self.__cv_features__,
+                    targets=self.__cv_targets__,
+                    pointer_name='__cv_pointer__'
+                )
+            )
 
     def _run_get_cv_features_and_targets(self):
         self.__current_cv_features_storage__, self.__current_cv_targets_storage__ = \
@@ -843,12 +853,21 @@ class RNNContainer(Container):
 
         :return:
         """
-        return next(
-            self._get_features_and_targets_for_sequence_labeling(features=self.__test_features__,
-                                                                 targets=self.__test_targets__,
-                                                                 pointer_name='__test_pointer__'
-                                                                 )
-        )
+        if self.__gen_method__ == 'labeling':
+            return next(
+                self._get_features_and_targets_for_sequence_labeling(features=self.__test_features__,
+                                                                     targets=self.__test_targets__,
+                                                                     pointer_name='__test_pointer__'
+                                                                     )
+            )
+        elif self.__gen_method__ == 'classification':
+            return next(
+                self._get_features_and_targets_for_sequence_classification(
+                    features=self.__test_features__,
+                    targets=self.__test_targets__,
+                    pointer_name='__test_pointer__'
+                )
+            )
 
     def _run_get_test_features_and_targets(self):
         self.__current_test_features_storage__, self.__current_test_targets_storage__ = \
