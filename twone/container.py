@@ -486,7 +486,7 @@ class RNNContainer(Container):
         self.target_tags = true_target_tags
         return self
 
-    def preprocess(self):
+    def preprocess(self, normalize=True):
         """
         Preprocess the data.
         fit the data and normalize it later
@@ -497,9 +497,9 @@ class RNNContainer(Container):
         # TODO, what if data is too large to fit in the memory?
         # fit and transform feature data
         self.fit()
-        normalized_features = self.normalize()
+        # normalized_features = self.normalize()
         # normalized_features
-        # normalized_features = self.data[self.feature_tags].values
+        normalized_features = self.data[self.feature_tags].values
         targets = self.data[self.target_tags].values
         all_data = np.concatenate((normalized_features, targets), axis=1)
         return all_data
