@@ -33,7 +33,7 @@ print('++++++++++++++++++++++')
 print('shape: ', container_classification.data.shape)
 container_classification.gen_batch_for_sequence_classification(batch=2, time_steps=5, randomly=False)
 print('++++++++++++++++++++++')
-for _ in range(100):
+for _ in range(1000):
     print('tf :', container_classification.get_training_features())
     print('tt :', container_classification.get_training_targets())
     print('cf :', container_classification.get_cv_features())

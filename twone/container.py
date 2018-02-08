@@ -385,6 +385,10 @@ class RNNContainer(Container):
         self.__time_steps__ = None
         self.__gen_method__ = None
 
+        self.__training_epochs__ = 0
+        self.__cv_epochs__ = 0
+        self.__test_epochs__ = 0
+
     @property
     def _total_length(self):
         """
@@ -417,6 +421,8 @@ class RNNContainer(Container):
 
     def _get_paired_retrieve_state(self, target):
         """
+        Features and targets is a pair.
+        When retrieving training/dev/cv features or targets, this internal methods could be used to get paired state.
         Get target's state from a feature-target pair
         :param target:
         :return:
@@ -558,9 +564,9 @@ class RNNContainer(Container):
         return self
 
     def gen_batch_for_sequence_labeling(self,
-                                        batch=5,
+                                        batch,
+                                        time_steps,
                                         randomly=False,
-                                        time_steps=10,
                                         shuffle=False,
                                         truncate_from_head=True,
                                         lock=True
@@ -626,7 +632,8 @@ class RNNContainer(Container):
         cv_data_length = cv_data_epochs * time_steps
 
         # compute training data length by epochs, cv_data_length and test_data_length
-        training_data_length = (epochs - cv_data_epochs - test_data_epochs) * time_steps
+        training_epochs = epochs - cv_data_epochs - test_data_epochs
+        training_data_length = training_epochs * time_steps
 
         # === step 6 ===
         # copy to self.variables
@@ -636,6 +643,9 @@ class RNNContainer(Container):
         self.__cv_targets__ = targets[:, training_data_length: training_data_length + cv_data_length, :]
         self.__test_features__ = features[:, training_data_length + cv_data_length:, :]
         self.__test_targets__ = targets[:, training_data_length + cv_data_length:, :]
+        self.__training_epochs__ = training_epochs
+        self.__cv_epochs__ = cv_data_epochs
+        self.__test_epochs__ = test_data_epochs
         self.__batch__ = batch
         self.__random__ = randomly
         # If not locked output, only returning features is allowed.
