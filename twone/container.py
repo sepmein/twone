@@ -353,6 +353,9 @@ class RNNContainer(Container):
                            test_set_split_ratio)
 
         # training, cv and test data
+        self.test_epochs = None
+        self.cv_epochs = None
+        self.training_epochs = None
         self.__training_features__ = None
         self.__training_targets__ = None
         self.__cv_features__ = None
@@ -628,7 +631,8 @@ class RNNContainer(Container):
         cv_data_length = cv_data_epochs * time_steps
 
         # compute training data length by epochs, cv_data_length and test_data_length
-        training_data_length = (epochs - cv_data_epochs - test_data_epochs) * time_steps
+        training_epochs = epochs - cv_data_epochs - test_data_epochs
+        training_data_length = training_epochs * time_steps
 
         # === step 6 ===
         # copy to self.variables
@@ -640,6 +644,10 @@ class RNNContainer(Container):
         self.__test_targets__ = targets[:, training_data_length + cv_data_length:, :]
         self.__batch__ = batch
         self.__random__ = randomly
+        # set epochs
+        self.training_epochs = training_epochs
+        self.cv_epochs = cv_data_epochs
+        self.test_epochs = test_data_epochs
         # If not locked output, only returning features is allowed.
         self.__lock_output__ = lock
         self.__time_steps__ = time_steps
