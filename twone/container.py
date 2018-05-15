@@ -666,7 +666,8 @@ class RNNContainer(Container):
         # Gen first batch
         self._run_get_training_features_and_targets()
         self._run_get_cv_features_and_targets()
-        self._run_get_test_features_and_targets()
+        if self.test_set_split_ratio > 0:
+            self._run_get_test_features_and_targets()
         return self
 
     def _get_features_and_targets_for_sequence_labeling(self, features, targets, pointer_name):
